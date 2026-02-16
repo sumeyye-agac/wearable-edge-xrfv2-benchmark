@@ -65,6 +65,12 @@ Outputs include:
 - checkpoint/model size (MB)
 - CPU latency (`median`, `p90`) after warmup
 
+ONNX export:
+```bash
+xrfv2-edge-tal export-onnx --checkpoint runs/<TRAIN_RUN>/checkpoints/last.npz --config configs/dummy_tiny_tcn.yaml --output-path artifacts/model.onnx --seed 42
+```
+(`torch` + `onnxruntime` are required for ONNX export verification.)
+
 ## Reproducibility Contract
 
 Each run writes artifacts under `runs/<run_id>/`:

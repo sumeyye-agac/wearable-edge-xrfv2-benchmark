@@ -1,0 +1,11 @@
+cff-version: 1.2.0
+title: "XRF V2 – Edge-First Multi-IMU TAL Benchmark"
+message: "If you use this software, please cite it."
+type: software
+authors:
+  - family-names: "Agac"
+    given-names: "Sumeyye"
+repository-code: "https://github.com/sumeyye-agac/wearable-edge-xrfv2-benchmark"
+license: "MIT"
+version: "0.1.0"
+date-released: "2026-02-16"
