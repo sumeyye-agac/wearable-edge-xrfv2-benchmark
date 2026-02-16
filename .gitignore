@@ -25,10 +25,10 @@ htmlcov/
 .DS_Store
 
 # Data and experiment artifacts
-data/
-runs/
-data/raw/
-data/processed/
+/data/
+/runs/
+/data/raw/
+/data/processed/
 checkpoints/
 artifacts/
 logs/
