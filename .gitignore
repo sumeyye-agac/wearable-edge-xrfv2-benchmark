@@ -1,0 +1,47 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+dist/
+*.egg-info/
+.eggs/
+.venv/
+venv/
+.env
+
+# Tooling
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+
+# IDE/OS
+.vscode/
+.idea/
+.DS_Store
+
+# Data and experiment artifacts
+data/
+runs/
+data/raw/
+data/processed/
+checkpoints/
+artifacts/
+logs/
+*.pt
+*.pth
+*.ckpt
+*.onnx
+*.h5
+*.hdf5
+*.parquet
+
+# Notebook artifacts
+.ipynb_checkpoints/
+
+# Local files
+*.log
