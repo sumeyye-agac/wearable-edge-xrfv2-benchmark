@@ -23,6 +23,8 @@ This track intentionally uses lightweight baselines (`TinyTCN`, `TinyTransformer
 
 - `configs/paper_light_tiny_tcn.yaml`
 - `configs/paper_light_tiny_transformer.yaml`
+- `configs/paper_light_plus_tiny_tcn.yaml`
+- `configs/paper_light_plus_tiny_transformer.yaml`
 
 ## Run
 
@@ -42,6 +44,13 @@ xrfv2-edge-tal benchmark --checkpoint runs/<TRAIN_RUN>/checkpoints/last.npz --co
 
 - Detailed report: `docs/results_paper_light_full_2026-02-17.md`
 - Machine-readable metrics: `docs/results_paper_light_full_2026-02-17.json`
+- Capacity ablation report: `docs/results_capacity_ablation_2026-02-17.md`
+- Capacity ablation metrics: `docs/results_capacity_ablation_2026-02-17.json`
+
+## Capacity Guidance
+
+- If baseline TAL quality is too low, first try `paper_light_plus_tiny_tcn`.
+- Keep thresholds tuned during eval (`decode.score_threshold`) since larger capacity can increase recall and false positives simultaneously.
 
 ## Key Knobs
 

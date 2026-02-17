@@ -73,6 +73,10 @@ Why this track:
 - aligned with paper-level protocol choices where possible
 - intentionally different architecture choice (TinyTCN/TinyTransformer) for edge deployment constraints
 
+Larger edge-small variants are available:
+- `configs/paper_light_plus_tiny_tcn.yaml`
+- `configs/paper_light_plus_tiny_transformer.yaml`
+
 ### Paper-Light Full Snapshot (2026-02-17, full 9,660-sample split, MPS)
 
 | Model | Train Run ID | Train Time | Eval Run ID (default) | mAP avg (default thr) | Eval Run ID (low thr) | mAP avg (low thr) | F1@0.50 (low thr) | Params | CPU Latency ms (median / p90) |
@@ -92,6 +96,19 @@ Notes:
 |---|---|---|---:|---:|---:|
 | TinyTCN | `20260217_082536_b7df6361` | `20260217_082752_8cadc1c9` | `0.05` | `0.00096571` | `0.00286970` |
 | TinyTransformer | `20260217_082801_06d434b9` | `20260217_083024_c731d84d` | `0.01` | `0.00000113` | `0.00019417` |
+
+### Capacity Ablation Snapshot (2026-02-17, 2-epoch/1024-sample controlled run)
+
+| Model | Variant | Params | mAP avg | F1@0.50 | Latency ms (median / p90) |
+|---|---|---:|---:|---:|---:|
+| TinyTCN | base (`paper_light`) | `8,238` | `0.00001856` | `0.00296696` | `2.0848 / 2.3165` |
+| TinyTCN | plus (`paper_light_plus`) | `16,446` | `0.00005100` | `0.00223113` | `2.1442 / 2.3953` |
+| TinyTransformer | base (`paper_light`) | `8,070` | `0.00001964` | `0.00102402` | `9.3058 / 10.0759` |
+| TinyTransformer | plus (`paper_light_plus`) | `14,046` | `0.00001613` | `0.00102402` | `5.7048 / 7.3897` |
+
+Recommendation:
+- If you want a slightly larger model while staying edge-small, start with `paper_light_plus_tiny_tcn`.
+- For full details, see `docs/results_capacity_ablation_2026-02-17.md`.
 
 ## Edge Metrics
 
