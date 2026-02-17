@@ -52,6 +52,19 @@ xrfv2-edge-tal train --config configs/dummy_tiny_tcn.yaml --adapter xrfv2 --data
 xrfv2-edge-tal eval --checkpoint runs/<TRAIN_RUN>/checkpoints/last.npz --config configs/dummy_tiny_tcn.yaml --adapter xrfv2 --data-root /path/to/xrfv2 --seed 42
 ```
 
+## Latest Real-Run Snapshot (2026-02-17)
+
+Measured on the full available Kaggle XRFV2 release in this environment.
+
+| Model | Train Run ID | Eval Run ID (thr=0.35) | mAP avg (thr=0.35 decode) | mAP avg (thr=0.05 decode) | Params | CPU Latency ms (median / p90) |
+|---|---|---|---:|---:|---:|---:|
+| TinyTCN | `20260217_005508_d0613500` | `20260217_011540_d0613500` | `0.00000000` | `0.00013746` | `10,974` | `35.7483 / 45.0604` |
+| TinyTransformer | `20260217_011550_2a6307aa` | `20260217_020811_2a6307aa` | `0.00000000` | `0.00000090` | `14,046` | `94.7648 / 194.0851` |
+
+Notes:
+- Kaggle package currently lacks `test_data.h5` and `test_label.json`; local run used aliases to the available train files for executable end-to-end validation.
+- Full analysis artifacts were generated under `/tmp/real_xrfv2_runs/` including `real_analysis_full.md` and `real_analysis_full.json`.
+
 ## Edge Metrics
 
 Benchmark a checkpoint:
