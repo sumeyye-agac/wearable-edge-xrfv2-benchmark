@@ -25,6 +25,8 @@ This track intentionally uses lightweight baselines (`TinyTCN`, `TinyTransformer
 - `configs/paper_light_tiny_transformer.yaml`
 - `configs/paper_light_plus_tiny_tcn.yaml`
 - `configs/paper_light_plus_tiny_transformer.yaml`
+- `configs/deploy_tiny_tcn.yaml`
+- `configs/deploy_tiny_transformer.yaml`
 
 ## Run
 
@@ -51,6 +53,7 @@ xrfv2-edge-tal benchmark --checkpoint runs/<TRAIN_RUN>/checkpoints/last.npz --co
 
 - If baseline TAL quality is too low, first try `paper_light_plus_tiny_tcn`.
 - Keep thresholds tuned during eval (`decode.score_threshold`) since larger capacity can increase recall and false positives simultaneously.
+- For strict IMU-only deployment profiles, start from `deploy_tiny_tcn.yaml`.
 
 ## Key Knobs
 

@@ -76,6 +76,9 @@ Why this track:
 Larger edge-small variants are available:
 - `configs/paper_light_plus_tiny_tcn.yaml`
 - `configs/paper_light_plus_tiny_transformer.yaml`
+- deployment-oriented presets:
+  - `configs/deploy_tiny_tcn.yaml`
+  - `configs/deploy_tiny_transformer.yaml`
 
 ### Paper-Light Full Snapshot (2026-02-17, full 9,660-sample split, MPS)
 
@@ -109,6 +112,19 @@ Notes:
 Recommendation:
 - If you want a slightly larger model while staying edge-small, start with `paper_light_plus_tiny_tcn`.
 - For full details, see `docs/results_capacity_ablation_2026-02-17.md`.
+
+### Deploy-Oriented IMU-Only Run (2026-02-17)
+
+Using `configs/deploy_tiny_tcn.yaml` (IMU-only, argmax decode, smoothing):
+
+| Model | Train Run ID | Eval Run ID | Decode Thr | mAP avg | F1@0.50 | Params | CPU Latency ms (median / p90) |
+|---|---|---|---:|---:|---:|---:|---:|
+| Deploy TinyTCN | `20260217_104534_bcb84607` | `20260217_110645_231e9644` | `0.10` | `0.00674104` | `0.01220300` | `2,958` | `0.8968 / 1.3080` |
+
+Status:
+- Edge/runtime is deployment-grade.
+- TAL quality improved versus earlier lightweight runs, but is still below a typical production-quality localization bar.
+- See `docs/deploy_readiness.md` for current gate status and next steps.
 
 ## Edge Metrics
 

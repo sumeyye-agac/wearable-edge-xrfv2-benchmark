@@ -13,7 +13,7 @@ import numpy as np
 from xrfv2_edge_tal.artifacts import create_run_dir, write_metrics
 from xrfv2_edge_tal.checkpoint import load_checkpoint
 from xrfv2_edge_tal.data.adapters import DummyAdapter, XRFV2H5Adapter
-from xrfv2_edge_tal.decoding import decode_framewise_probs
+from xrfv2_edge_tal.decoding import decode_argmax_probs, decode_per_class_threshold
 from xrfv2_edge_tal.metrics.tal_map import (
     ap_by_class_at_tiou,
     map_over_thresholds,
@@ -42,6 +42,29 @@ def _adapter_from_name(adapter_name: str, data_root: str, seed: int) -> DummyAda
     raise ValueError(f"Unsupported adapter: {adapter_name}")
 
 
+def _parse_modalities(value: Any) -> list[str] | None:
+    if value is None:
+        return None
+    if isinstance(value, str):
+        items = [x.strip() for x in value.split(",") if x.strip()]
+        return items or None
+    if isinstance(value, list):
+        items = [str(x).strip() for x in value if str(x).strip()]
+        return items or None
+    raise ValueError(f"modalities must be list[str] or comma-separated string, got: {type(value)!r}")
+
+
+def _select_modalities(x: dict[str, np.ndarray], selected: list[str] | None) -> dict[str, np.ndarray]:
+    if not selected:
+        return x
+    out = {k: v for k, v in x.items() if k in selected}
+    if not out:
+        available = ", ".join(sorted(x.keys()))
+        wanted = ", ".join(selected)
+        raise ValueError(f"Requested modalities not found. wanted=[{wanted}] available=[{available}]")
+    return out
+
+
 def eval_main(
     checkpoint: str,
     config: dict[str, Any],
@@ -58,6 +81,7 @@ def eval_main(
     decode_cfg = config.get("decode", {})
     eval_cfg = config.get("eval", {})
     runtime_cfg = config.get("runtime", {})
+    data_cfg = config.get("data", {})
 
     model_name = str(metadata.get("model_name", model_cfg.get("name", "tiny_tcn")))
     input_dims = dict(metadata.get("input_dims", {}))
@@ -96,6 +120,10 @@ def eval_main(
     min_len = int(decode_cfg.get("min_len", 3))
     nms_tiou = float(decode_cfg.get("nms_tiou", 0.5))
     background_class = int(decode_cfg.get("background_class", 0))
+    decode_mode = str(decode_cfg.get("mode", "per_class")).strip().lower()
+    smooth_kernel = int(decode_cfg.get("smooth_kernel", 1))
+    min_gap = int(decode_cfg.get("min_gap", 0))
+    selected_modalities = _parse_modalities(data_cfg.get("modalities"))
 
     preds: list[dict[str, Any]] = []
     gts: list[dict[str, Any]] = []
@@ -105,6 +133,7 @@ def eval_main(
         split_ids = split_ids[:max_eval_samples]
     for sample_id in split_ids:
         x, segments, _ = adapter.get_sample(sample_id, split)
+        x = _select_modalities(x, selected=selected_modalities)
         full_seq_len = int(next(iter(x.values())).shape[0])
         segments = to_frame_segments(segments=segments, seq_len=full_seq_len)
         if max_seq_len > 0:
@@ -154,12 +183,24 @@ def eval_main(
         else:
             probs = model.predict_proba(x)
 
-        decoded = decode_framewise_probs(
-            probs=probs,
-            score_threshold=score_threshold,
-            min_len=min_len,
-            background_class=background_class,
-        )
+        if decode_mode == "argmax":
+            decoded = decode_argmax_probs(
+                probs=probs,
+                score_threshold=score_threshold,
+                min_len=min_len,
+                background_class=background_class,
+                smooth_kernel=smooth_kernel,
+                min_gap=min_gap,
+            )
+        elif decode_mode == "per_class":
+            decoded = decode_per_class_threshold(
+                probs=probs,
+                score_threshold=score_threshold,
+                min_len=min_len,
+                background_class=background_class,
+            )
+        else:
+            raise ValueError(f"Unsupported decode.mode='{decode_mode}'. Use 'per_class' or 'argmax'.")
         decoded = temporal_nms(decoded, tiou_threshold=nms_tiou, classwise=True)
 
         for seg in decoded:
@@ -212,6 +253,16 @@ def eval_main(
         "class_hist": class_hist,
         "num_predictions": len(preds),
         "num_gt_segments": len(gts),
+        "decode": {
+            "mode": decode_mode,
+            "score_threshold": score_threshold,
+            "min_len": min_len,
+            "nms_tiou": nms_tiou,
+            "background_class": background_class,
+            "smooth_kernel": smooth_kernel,
+            "min_gap": min_gap,
+        },
+        "selected_modalities": selected_modalities or [],
         "paper_track": {
             "enabled": paper_enabled,
             "clip_len": paper_clip_len,

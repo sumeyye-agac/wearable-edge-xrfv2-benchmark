@@ -37,6 +37,29 @@ def _adapter_from_name(adapter_name: str, data_root: str, seed: int) -> DummyAda
     raise ValueError(f"Unsupported adapter: {adapter_name}")
 
 
+def _parse_modalities(value: Any) -> list[str] | None:
+    if value is None:
+        return None
+    if isinstance(value, str):
+        items = [x.strip() for x in value.split(",") if x.strip()]
+        return items or None
+    if isinstance(value, list):
+        items = [str(x).strip() for x in value if str(x).strip()]
+        return items or None
+    raise ValueError(f"modalities must be list[str] or comma-separated string, got: {type(value)!r}")
+
+
+def _select_modalities(x: dict[str, np.ndarray], selected: list[str] | None) -> dict[str, np.ndarray]:
+    if not selected:
+        return x
+    out = {k: v for k, v in x.items() if k in selected}
+    if not out:
+        available = ", ".join(sorted(x.keys()))
+        wanted = ", ".join(selected)
+        raise ValueError(f"Requested modalities not found. wanted=[{wanted}] available=[{available}]")
+    return out
+
+
 def segments_to_frame_labels(segments: list[dict[str, float | int]], seq_len: int, num_classes: int) -> np.ndarray:
     labels = np.zeros((seq_len,), dtype=np.int64)
     for seg in segments:
@@ -63,11 +86,16 @@ def _epoch_lr(base_lr: float, epoch: int, epochs: int, schedule: str, min_lr_rat
     return float(base_lr)
 
 
-def _infer_input_dims(adapter: DummyAdapter | XRFV2H5Adapter, split: str) -> dict[str, int]:
+def _infer_input_dims(
+    adapter: DummyAdapter | XRFV2H5Adapter,
+    split: str,
+    selected_modalities: list[str] | None = None,
+) -> dict[str, int]:
     ids = adapter.split_ids(split)
     if not ids:
         raise ValueError(f"No samples found in split '{split}'")
     x, _, _ = adapter.get_sample(ids[0], split)
+    x = _select_modalities(x, selected=selected_modalities)
     return {modality: int(arr.shape[1]) for modality, arr in x.items()}
 
 
@@ -132,6 +160,7 @@ def train_main(
     train_cfg = config.get("train", {})
     model_cfg = config.get("model", {})
     runtime_cfg = config.get("runtime", {})
+    data_cfg = config.get("data", {})
 
     epochs = int(train_cfg.get("epochs", 1))
     lr = float(train_cfg.get("lr", 1e-2))
@@ -160,9 +189,10 @@ def train_main(
     hidden_dim = int(model_cfg.get("hidden_dim", 32))
     backend = str(runtime_cfg.get("backend", "numpy"))
     device = str(runtime_cfg.get("device", "auto"))
+    selected_modalities = _parse_modalities(data_cfg.get("modalities"))
 
     adapter = _adapter_from_name(adapter_name=adapter_name, data_root=data_root, seed=seed)
-    input_dims = _infer_input_dims(adapter, split="train")
+    input_dims = _infer_input_dims(adapter, split="train", selected_modalities=selected_modalities)
 
     model = build_model(
         name=model_name,
@@ -202,6 +232,7 @@ def train_main(
         epoch_windows = 0
         for sample_id in train_ids:
             x, segments, _ = adapter.get_sample(sample_id, "train")
+            x = _select_modalities(x, selected=selected_modalities)
             seq_len = int(next(iter(x.values())).shape[0])
             segments = to_frame_segments(segments=segments, seq_len=seq_len)
             if max_seq_len > 0:
@@ -274,6 +305,7 @@ def train_main(
         "adapter": adapter_name,
         "backend": backend,
         "device": device,
+        "selected_modalities": selected_modalities or [],
     }
     checkpoint_path = save_checkpoint(run_dir / "checkpoints" / "last.npz", model.state_dict(), metadata)
 
@@ -295,6 +327,7 @@ def train_main(
                 "noise_std": paper_noise_std,
                 "scale_jitter": paper_scale_jitter,
             },
+            "selected_modalities": selected_modalities or [],
         },
         "checkpoint": str(checkpoint_path),
     }
