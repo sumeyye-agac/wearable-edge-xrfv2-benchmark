@@ -51,11 +51,14 @@ def eval_main(
     model_cfg = config.get("model", {})
     decode_cfg = config.get("decode", {})
     eval_cfg = config.get("eval", {})
+    runtime_cfg = config.get("runtime", {})
 
     model_name = str(metadata.get("model_name", model_cfg.get("name", "tiny_tcn")))
     input_dims = dict(metadata.get("input_dims", {}))
     num_classes = int(metadata.get("num_classes", model_cfg.get("num_classes", 5)))
     hidden_dim = int(metadata.get("hidden_dim", model_cfg.get("hidden_dim", 32)))
+    backend = str(metadata.get("backend", runtime_cfg.get("backend", "numpy")))
+    device = str(metadata.get("device", runtime_cfg.get("device", "auto")))
 
     if not input_dims:
         raise ValueError("Checkpoint metadata missing input_dims")
@@ -66,6 +69,8 @@ def eval_main(
         num_classes=num_classes,
         hidden_dim=hidden_dim,
         seed=seed,
+        backend=backend,
+        device=device,
         kernel_size=int(model_cfg.get("kernel_size", state.get("kernel_size", 5))),
     )
     model.load_state_dict(state)

@@ -97,6 +97,8 @@ def _load_teacher_model(teacher_checkpoint: str, seed: int):
         num_classes=int(metadata["num_classes"]),
         hidden_dim=int(metadata["hidden_dim"]),
         seed=seed,
+        backend=str(metadata.get("backend", "numpy")),
+        device=str(metadata.get("device", "auto")),
         kernel_size=int(state.get("kernel_size", 5)),
     )
     teacher.load_state_dict(state)
@@ -114,6 +116,7 @@ def train_main(
 
     train_cfg = config.get("train", {})
     model_cfg = config.get("model", {})
+    runtime_cfg = config.get("runtime", {})
 
     epochs = int(train_cfg.get("epochs", 1))
     lr = float(train_cfg.get("lr", 1e-2))
@@ -129,6 +132,8 @@ def train_main(
     model_name = str(model_cfg.get("name", "tiny_tcn"))
     num_classes = int(model_cfg.get("num_classes", 5))
     hidden_dim = int(model_cfg.get("hidden_dim", 32))
+    backend = str(runtime_cfg.get("backend", "numpy"))
+    device = str(runtime_cfg.get("device", "auto"))
 
     adapter = _adapter_from_name(adapter_name=adapter_name, data_root=data_root, seed=seed)
     input_dims = _infer_input_dims(adapter, split="train")
@@ -139,6 +144,8 @@ def train_main(
         num_classes=num_classes,
         hidden_dim=hidden_dim,
         seed=seed,
+        backend=backend,
+        device=device,
         kernel_size=int(model_cfg.get("kernel_size", 5)),
     )
     teacher_model = None
@@ -197,6 +204,8 @@ def train_main(
         "hidden_dim": hidden_dim,
         "seed": seed,
         "adapter": adapter_name,
+        "backend": backend,
+        "device": device,
     }
     checkpoint_path = save_checkpoint(run_dir / "checkpoints" / "last.npz", model.state_dict(), metadata)
 

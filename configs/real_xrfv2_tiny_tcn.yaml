@@ -1,4 +1,7 @@
 seed: 42
+runtime:
+  backend: torch
+  device: mps
 model:
   name: tiny_tcn
   num_classes: 30
