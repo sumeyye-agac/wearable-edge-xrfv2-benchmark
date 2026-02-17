@@ -160,7 +160,13 @@ class XRFV2H5Adapter(RawAdapter):
         with h5py.File(h5_path, "r") as h5f:
             for modality in self._modalities:
                 dataset = self._resolve_modality_dataset(h5f, modality)
-                x[modality] = np.asarray(dataset[idx], dtype=np.float32)
+                arr = np.asarray(dataset[idx], dtype=np.float32)
+                # Normalize modality tensors to [T, D] for baseline models.
+                if arr.ndim < 2:
+                    arr = arr.reshape(-1, 1)
+                elif arr.ndim > 2:
+                    arr = arr.reshape(arr.shape[0], -1)
+                x[modality] = arr
 
         segments = self._labels[split].get(str(idx), [])
         meta = {"sample_id": str(idx), "source": split}
@@ -214,6 +220,23 @@ class XRFV2H5Adapter(RawAdapter):
 
     def _parse_label_payload(self, raw: Any, source_path: Path) -> dict[str, list[Segment]]:
         if isinstance(raw, dict):
+            # Modality-specific schema:
+            # {"imu": {"0": [[...], ...]}, "wifi": {...}, "imu_file_names": {"0": "..."}}
+            if raw and all(isinstance(v, dict) for v in raw.values()):
+                merged_by_sample: dict[str, list[Segment]] = {}
+                for top_key, per_sample in raw.items():
+                    if str(top_key).endswith("_file_names"):
+                        continue
+                    for sample_id, payload in per_sample.items():
+                        try:
+                            segs = self._parse_segments(payload, source_path)
+                        except ValueError:
+                            # Ignore non-segment payloads in mixed schemas.
+                            continue
+                        merged_by_sample.setdefault(str(sample_id), []).extend(segs)
+                if merged_by_sample:
+                    return merged_by_sample
+
             out: dict[str, list[Segment]] = {}
             for key, value in raw.items():
                 if isinstance(value, dict):

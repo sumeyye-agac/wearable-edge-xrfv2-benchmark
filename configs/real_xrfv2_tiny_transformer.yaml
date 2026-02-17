@@ -1,0 +1,29 @@
+seed: 42
+model:
+  name: tiny_transformer
+  num_classes: 30
+  hidden_dim: 32
+train:
+  epochs: 2
+  lr: 0.01
+  modality_dropout_p: 0.1
+  max_train_samples: 0
+  max_seq_len: 0
+  distillation:
+    enabled: false
+    teacher_checkpoint: ""
+    weight: 0.3
+    temperature: 2.0
+decode:
+  score_threshold: 0.35
+  min_len: 3
+  nms_tiou: 0.5
+  background_class: -1
+eval:
+  split: test
+  max_eval_samples: 0
+  max_seq_len: 0
+benchmark:
+  seq_len: 2048
+  warmup: 5
+  iters: 25

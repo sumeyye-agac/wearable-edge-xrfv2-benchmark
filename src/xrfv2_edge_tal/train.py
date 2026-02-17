@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import random
+import time
 from pathlib import Path
 from typing import Any
 
@@ -32,8 +33,14 @@ def _adapter_from_name(adapter_name: str, data_root: str, seed: int) -> DummyAda
 def segments_to_frame_labels(segments: list[dict[str, float | int]], seq_len: int, num_classes: int) -> np.ndarray:
     labels = np.zeros((seq_len,), dtype=np.int64)
     for seg in segments:
-        start = max(0, int(float(seg["start"])))
-        end = min(seq_len, int(float(seg["end"])))
+        raw_start = float(seg["start"])
+        raw_end = float(seg["end"])
+        # Support normalized [0, 1] timestamps (common in XRFV2 labels).
+        if raw_end <= 1.0 and raw_start <= 1.0:
+            raw_start *= seq_len
+            raw_end *= seq_len
+        start = max(0, int(raw_start))
+        end = min(seq_len, int(raw_end))
         label = int(seg["label"])
         label = min(max(label, 0), num_classes - 1)
         if end > start:
@@ -47,6 +54,27 @@ def _infer_input_dims(adapter: DummyAdapter | XRFV2H5Adapter, split: str) -> dic
         raise ValueError(f"No samples found in split '{split}'")
     x, _, _ = adapter.get_sample(ids[0], split)
     return {modality: int(arr.shape[1]) for modality, arr in x.items()}
+
+
+def _truncate_segments(
+    segments: list[dict[str, float | int]],
+    full_len: int,
+    max_len: int,
+) -> list[dict[str, float | int]]:
+    out: list[dict[str, float | int]] = []
+    for seg in segments:
+        raw_start = float(seg["start"])
+        raw_end = float(seg["end"])
+        if raw_end <= 1.0 and raw_start <= 1.0:
+            raw_start *= full_len
+            raw_end *= full_len
+        if raw_start >= max_len:
+            continue
+        clipped = dict(seg)
+        clipped["start"] = float(max(0.0, raw_start))
+        clipped["end"] = float(min(float(max_len), raw_end))
+        out.append(clipped)
+    return out
 
 
 def _save_dataset_fingerprint(run_dir: Path, data_root: str, adapter: DummyAdapter | XRFV2H5Adapter) -> None:
@@ -90,6 +118,8 @@ def train_main(
     epochs = int(train_cfg.get("epochs", 1))
     lr = float(train_cfg.get("lr", 1e-2))
     modality_dropout_p = float(train_cfg.get("modality_dropout_p", 0.1))
+    max_train_samples = int(train_cfg.get("max_train_samples", 0))
+    max_seq_len = int(train_cfg.get("max_seq_len", 0))
     kd_cfg = train_cfg.get("distillation", {})
     kd_enabled = bool(kd_cfg.get("enabled", False))
     kd_weight = float(kd_cfg.get("weight", 0.3))
@@ -119,12 +149,20 @@ def train_main(
     (run_dir / "checkpoints").mkdir(parents=True, exist_ok=True)
 
     train_ids = adapter.split_ids("train")
+    if max_train_samples > 0:
+        train_ids = train_ids[:max_train_samples]
     history: list[dict[str, float | int]] = []
+    total_steps = 0
 
     for epoch in range(1, epochs + 1):
+        t0 = time.perf_counter()
         losses: list[float] = []
         for sample_id in train_ids:
             x, segments, _ = adapter.get_sample(sample_id, "train")
+            if max_seq_len > 0:
+                full_len = int(next(iter(x.values())).shape[0])
+                x = {k: v[:max_seq_len] for k, v in x.items()}
+                segments = _truncate_segments(segments, full_len=full_len, max_len=max_seq_len)
             first = next(iter(x.values()))
             target = segments_to_frame_labels(segments, seq_len=first.shape[0], num_classes=num_classes)
             teacher_probs = teacher_model.predict_proba(x) if teacher_model is not None else None
@@ -138,9 +176,19 @@ def train_main(
                 temperature=kd_temperature,
             )
             losses.append(loss)
+            total_steps += 1
 
         mean_loss = float(np.mean(losses)) if losses else 0.0
-        history.append({"epoch": epoch, "loss": mean_loss})
+        epoch_sec = float(time.perf_counter() - t0)
+        history.append(
+            {
+                "epoch": epoch,
+                "loss": mean_loss,
+                "epoch_seconds": epoch_sec,
+                "samples": len(train_ids),
+                "samples_per_sec": float(len(train_ids) / max(epoch_sec, 1e-9)),
+            }
+        )
 
     metadata = {
         "model_name": model_name,
@@ -157,6 +205,8 @@ def train_main(
             "epochs": epochs,
             "history": history,
             "final_loss": history[-1]["loss"] if history else 0.0,
+            "num_train_samples": len(train_ids),
+            "total_steps": total_steps,
         },
         "checkpoint": str(checkpoint_path),
     }

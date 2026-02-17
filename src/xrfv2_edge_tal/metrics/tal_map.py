@@ -99,6 +99,88 @@ def ap_at_tiou(preds: list[SegmentLike], gts: list[SegmentLike], tiou: float) ->
     return float(np.mean(ap_values))
 
 
+def ap_by_class_at_tiou(
+    preds: list[SegmentLike],
+    gts: list[SegmentLike],
+    tiou: float,
+) -> dict[int, float]:
+    """Return AP per class at one tIoU threshold."""
+    if not gts:
+        return {}
+
+    labels = sorted({int(gt["label"]) for gt in gts})
+    out: dict[int, float] = {}
+    for label in labels:
+        class_ap = ap_at_tiou(
+            preds=[p for p in preds if int(p["label"]) == label],
+            gts=[g for g in gts if int(g["label"]) == label],
+            tiou=tiou,
+        )
+        out[label] = float(class_ap)
+    return out
+
+
+def match_predictions_at_tiou(
+    preds: list[SegmentLike],
+    gts: list[SegmentLike],
+    tiou: float,
+) -> dict[str, Any]:
+    """Greedy confidence-sorted matching summary at one tIoU threshold."""
+    preds_sorted = sorted(preds, key=lambda p: float(p.get("score", 0.0)), reverse=True)
+    gt_by_key: dict[tuple[str, int], list[dict[str, Any]]] = defaultdict(list)
+    for gt in gts:
+        key = (str(gt["sample_id"]), int(gt["label"]))
+        gt_by_key[key].append({**gt, "matched": False})
+
+    tp = 0
+    fp = 0
+    matched_tious: list[float] = []
+    for pred in preds_sorted:
+        key = (str(pred["sample_id"]), int(pred["label"]))
+        candidates = gt_by_key.get(key, [])
+
+        best_iou = 0.0
+        best_idx = -1
+        for idx, candidate in enumerate(candidates):
+            if candidate["matched"]:
+                continue
+            iou = segment_tiou(pred, candidate)
+            if iou > best_iou:
+                best_iou = iou
+                best_idx = idx
+
+        if best_idx >= 0 and best_iou >= tiou:
+            tp += 1
+            candidates[best_idx]["matched"] = True
+            matched_tious.append(float(best_iou))
+        else:
+            fp += 1
+
+    fn = len(gts) - tp
+    precision = tp / max(tp + fp, 1)
+    recall = tp / max(tp + fn, 1)
+    f1 = 0.0
+    if precision + recall > 0:
+        f1 = 2.0 * precision * recall / (precision + recall)
+
+    tiou_stats = {
+        "count": len(matched_tious),
+        "mean": float(np.mean(matched_tious)) if matched_tious else 0.0,
+        "p50": float(np.percentile(matched_tious, 50)) if matched_tious else 0.0,
+        "p90": float(np.percentile(matched_tious, 90)) if matched_tious else 0.0,
+        "max": float(np.max(matched_tious)) if matched_tious else 0.0,
+    }
+    return {
+        "tp": tp,
+        "fp": fp,
+        "fn": fn,
+        "precision": float(precision),
+        "recall": float(recall),
+        "f1": float(f1),
+        "matched_tiou": tiou_stats,
+    }
+
+
 def map_over_thresholds(
     preds: list[SegmentLike],
     gts: list[SegmentLike],

@@ -48,7 +48,7 @@ def _latency_stats(
     x_dict: dict[str, np.ndarray],
     warmup: int = 5,
     iters: int = 25,
-) -> tuple[float, float]:
+) -> dict[str, Any]:
     for _ in range(warmup):
         _ = model.predict_proba(x_dict)
 
@@ -59,9 +59,16 @@ def _latency_stats(
         t1 = time.perf_counter()
         times_ms.append((t1 - t0) * 1000.0)
 
-    median = float(np.median(times_ms)) if times_ms else 0.0
-    p90 = float(np.percentile(times_ms, 90)) if times_ms else 0.0
-    return median, p90
+    return {
+        "samples_ms": [float(x) for x in times_ms],
+        "median": float(np.median(times_ms)) if times_ms else 0.0,
+        "mean": float(np.mean(times_ms)) if times_ms else 0.0,
+        "std": float(np.std(times_ms)) if times_ms else 0.0,
+        "p90": float(np.percentile(times_ms, 90)) if times_ms else 0.0,
+        "p95": float(np.percentile(times_ms, 95)) if times_ms else 0.0,
+        "min": float(np.min(times_ms)) if times_ms else 0.0,
+        "max": float(np.max(times_ms)) if times_ms else 0.0,
+    }
 
 
 def benchmark_main(
@@ -79,7 +86,7 @@ def benchmark_main(
     iters = int(bench_cfg.get("iters", 25))
 
     x = _make_fixed_input(metadata["input_dims"], seq_len=seq_len, seed=seed)
-    median_ms, p90_ms = _latency_stats(model=model, x_dict=x, warmup=warmup, iters=iters)
+    latency = _latency_stats(model=model, x_dict=x, warmup=warmup, iters=iters)
 
     checkpoint_size_mb = Path(checkpoint).stat().st_size / (1024.0 * 1024.0)
     params = _count_params(state)
@@ -88,8 +95,7 @@ def benchmark_main(
         "params": params,
         "checkpoint_size_mb": float(checkpoint_size_mb),
         "cpu_latency_ms": {
-            "median": median_ms,
-            "p90": p90_ms,
+            **latency,
             "warmup": warmup,
             "iters": iters,
             "seq_len": seq_len,
