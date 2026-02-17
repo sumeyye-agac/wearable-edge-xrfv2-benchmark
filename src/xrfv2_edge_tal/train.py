@@ -60,8 +60,14 @@ def _select_modalities(x: dict[str, np.ndarray], selected: list[str] | None) -> 
     return out
 
 
-def segments_to_frame_labels(segments: list[dict[str, float | int]], seq_len: int, num_classes: int) -> np.ndarray:
-    labels = np.zeros((seq_len,), dtype=np.int64)
+def segments_to_frame_labels(
+    segments: list[dict[str, float | int]],
+    seq_len: int,
+    num_classes: int,
+    background_label: int = 0,
+) -> np.ndarray:
+    bg = int(np.clip(background_label, 0, num_classes - 1))
+    labels = np.full((seq_len,), fill_value=bg, dtype=np.int64)
     for seg in segments:
         raw_start = float(seg["start"])
         raw_end = float(seg["end"])
@@ -143,6 +149,7 @@ def _load_teacher_model(teacher_checkpoint: str, seed: int):
         backend=str(metadata.get("backend", "numpy")),
         device=str(metadata.get("device", "auto")),
         kernel_size=int(state.get("kernel_size", 5)),
+        tcn_layers=int(state.get("tcn_layers", 1)),
     )
     teacher.load_state_dict(state)
     return teacher
@@ -174,6 +181,10 @@ def train_main(
     kd_weight = float(kd_cfg.get("weight", 0.3))
     kd_temperature = float(kd_cfg.get("temperature", 2.0))
     kd_teacher_ckpt = str(kd_cfg.get("teacher_checkpoint", "")).strip()
+    loss_cfg = train_cfg.get("loss", {})
+    focal_gamma = float(loss_cfg.get("focal_gamma", 0.0))
+    background_weight = float(loss_cfg.get("background_weight", 1.0))
+    class_balance = bool(loss_cfg.get("class_balance", False))
     paper_cfg = train_cfg.get("paper_track", {})
     paper_enabled = bool(paper_cfg.get("enabled", False))
     paper_clip_len = int(paper_cfg.get("clip_len", 2048))
@@ -189,6 +200,7 @@ def train_main(
     hidden_dim = int(model_cfg.get("hidden_dim", 32))
     backend = str(runtime_cfg.get("backend", "numpy"))
     device = str(runtime_cfg.get("device", "auto"))
+    background_label = int(train_cfg.get("background_label", 0))
     selected_modalities = _parse_modalities(data_cfg.get("modalities"))
 
     adapter = _adapter_from_name(adapter_name=adapter_name, data_root=data_root, seed=seed)
@@ -203,6 +215,7 @@ def train_main(
         backend=backend,
         device=device,
         kernel_size=int(model_cfg.get("kernel_size", 5)),
+        tcn_layers=int(model_cfg.get("tcn_layers", 1)),
     )
     teacher_model = None
     if kd_enabled and kd_teacher_ckpt:
@@ -265,7 +278,12 @@ def train_main(
                     scale_jitter=paper_scale_jitter if paper_enabled else 0.0,
                 )
                 first = next(iter(x_item.values()))
-                target = segments_to_frame_labels(seg_item, seq_len=first.shape[0], num_classes=num_classes)
+                target = segments_to_frame_labels(
+                    seg_item,
+                    seq_len=first.shape[0],
+                    num_classes=num_classes,
+                    background_label=background_label,
+                )
                 teacher_probs = teacher_model.predict_proba(x_item) if teacher_model is not None else None
                 loss = model.train_step(
                     x_dict=x_item,
@@ -275,6 +293,10 @@ def train_main(
                     teacher_probs=teacher_probs,
                     distill_weight=kd_weight if teacher_model is not None else 0.0,
                     temperature=kd_temperature,
+                    focal_gamma=focal_gamma,
+                    background_label=background_label,
+                    background_weight=background_weight,
+                    class_balance=class_balance,
                 )
                 losses.append(loss)
                 total_steps += 1
@@ -305,6 +327,7 @@ def train_main(
         "adapter": adapter_name,
         "backend": backend,
         "device": device,
+        "tcn_layers": int(model_cfg.get("tcn_layers", 1)),
         "selected_modalities": selected_modalities or [],
     }
     checkpoint_path = save_checkpoint(run_dir / "checkpoints" / "last.npz", model.state_dict(), metadata)
@@ -318,6 +341,12 @@ def train_main(
             "total_steps": total_steps,
             "num_train_windows": total_windows,
             "lr_schedule": lr_schedule,
+            "background_label": background_label,
+            "loss": {
+                "focal_gamma": focal_gamma,
+                "background_weight": background_weight,
+                "class_balance": class_balance,
+            },
             "paper_track": {
                 "enabled": paper_enabled,
                 "clip_len": paper_clip_len,

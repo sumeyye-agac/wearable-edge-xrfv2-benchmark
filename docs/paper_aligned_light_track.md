@@ -27,6 +27,9 @@ This track intentionally uses lightweight baselines (`TinyTCN`, `TinyTransformer
 - `configs/paper_light_plus_tiny_transformer.yaml`
 - `configs/deploy_tiny_tcn.yaml`
 - `configs/deploy_tiny_transformer.yaml`
+- `configs/deploy_tiny_tcn_bg.yaml`
+- `configs/deploy_tiny_tcn_bg_plus.yaml`
+- `configs/deploy_tiny_tcn_bg_focal.yaml`
 
 ## Run
 

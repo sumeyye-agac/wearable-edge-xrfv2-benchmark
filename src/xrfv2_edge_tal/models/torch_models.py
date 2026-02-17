@@ -150,12 +150,39 @@ class TorchBaseFrameModel:
         teacher_probs: np.ndarray | None = None,
         distill_weight: float = 0.0,
         temperature: float = 2.0,
+        focal_gamma: float = 0.0,
+        background_label: int = 0,
+        background_weight: float = 1.0,
+        class_balance: bool = False,
     ) -> float:
         logits, _, _ = self.forward(x_dict, training=True, modality_dropout_p=modality_dropout_p)
 
         target_t = torch.as_tensor(target, device=self.device, dtype=torch.long)
         target_t = torch.clamp(target_t, min=0, max=self.num_classes - 1)
-        ce_loss = F.cross_entropy(logits, target_t)
+        ce_per = F.cross_entropy(logits, target_t, reduction="none")
+
+        weights = torch.ones_like(ce_per)
+        bg = int(background_label)
+        if 0 <= bg < self.num_classes and background_weight != 1.0:
+            weights = torch.where(
+                target_t == bg,
+                weights * float(background_weight),
+                weights,
+            )
+        if class_balance and int(target_t.numel()) > 0:
+            classes, counts = torch.unique(target_t, return_counts=True)
+            inv = 1.0 / torch.clamp(counts.float(), min=1.0)
+            inv = inv / torch.clamp(torch.mean(inv), min=1e-12)
+            class_weights = torch.ones((self.num_classes,), device=self.device, dtype=torch.float32)
+            class_weights[classes] = inv
+            weights = weights * class_weights[target_t]
+
+        if focal_gamma > 0.0:
+            probs = torch.softmax(logits, dim=1)
+            pt = probs[torch.arange(probs.shape[0], device=self.device), target_t]
+            ce_per = ((1.0 - pt) ** float(focal_gamma)) * ce_per
+
+        ce_loss = torch.sum(ce_per * weights) / torch.clamp(torch.sum(weights), min=1e-9)
 
         loss = ce_loss
         w = float(np.clip(distill_weight, 0.0, 1.0))
@@ -247,6 +274,7 @@ class TorchTinyTCN(TorchBaseFrameModel):
         num_classes: int,
         hidden_dim: int = 32,
         kernel_size: int = 5,
+        tcn_layers: int = 1,
         seed: int = 42,
         device: str = "auto",
     ) -> None:
@@ -258,6 +286,20 @@ class TorchTinyTCN(TorchBaseFrameModel):
             device=device,
         )
         self.kernel_size = int(kernel_size)
+        self.tcn_layers = max(1, int(tcn_layers))
+        self.dw_kernels: dict[str, list[torch.Tensor]] = {}
+        for modality in self.modalities:
+            self.dw_kernels[modality] = []
+            for _ in range(self.tcn_layers - 1):
+                k = torch.zeros(
+                    (self.hidden_dim, 1, self.kernel_size),
+                    device=self.device,
+                    dtype=torch.float32,
+                )
+                center = self.kernel_size // 2
+                k[:, 0, center] = 1.0
+                k = (k + 0.01 * torch.randn_like(k)).requires_grad_(True)
+                self.dw_kernels[modality].append(k)
 
     def _moving_average(self, x: torch.Tensor) -> torch.Tensor:
         if self.kernel_size <= 1:
@@ -270,14 +312,42 @@ class TorchTinyTCN(TorchBaseFrameModel):
 
     def _encode_modality(self, x: torch.Tensor, modality: str) -> torch.Tensor:
         smoothed = self._moving_average(x)
-        return torch.tanh(smoothed @ self.proj_w[modality] + self.proj_b[modality])
+        h = torch.tanh(smoothed @ self.proj_w[modality] + self.proj_b[modality])
+        if self.tcn_layers <= 1:
+            return h
+        pad = self.kernel_size // 2
+        for kernel in self.dw_kernels.get(modality, []):
+            ht = h.transpose(0, 1).unsqueeze(0)
+            hpad = F.pad(ht, (pad, pad), mode="replicate")
+            conv = F.conv1d(hpad, kernel, stride=1, padding=0, groups=self.hidden_dim)
+            conv_t = conv.squeeze(0).transpose(0, 1)
+            h = torch.tanh(conv_t + h)
+        return h
 
-    def _extra_state(self) -> dict[str, int]:
-        return {"kernel_size": self.kernel_size}
+    def _extra_parameters(self) -> list[torch.Tensor]:
+        out: list[torch.Tensor] = []
+        for modality in self.modalities:
+            out.extend(self.dw_kernels.get(modality, []))
+        return out
+
+    def _extra_state(self) -> dict[str, Any]:
+        out: dict[str, Any] = {"kernel_size": self.kernel_size, "tcn_layers": self.tcn_layers}
+        for modality in self.modalities:
+            for idx, kernel in enumerate(self.dw_kernels.get(modality, [])):
+                out[f"dw_kernel::{modality}::{idx}"] = kernel.detach().cpu().numpy()
+        return out
 
     def _load_extra_state(self, state: dict[str, Any]) -> None:
         if "kernel_size" in state:
             self.kernel_size = int(state["kernel_size"])
+        if "tcn_layers" in state:
+            self.tcn_layers = int(state["tcn_layers"])
+        for modality in self.modalities:
+            for idx, kernel in enumerate(self.dw_kernels.get(modality, [])):
+                key = f"dw_kernel::{modality}::{idx}"
+                if key in state:
+                    with torch.no_grad():
+                        kernel.copy_(torch.as_tensor(state[key], device=self.device, dtype=torch.float32))
 
 
 class TorchTinyTransformer(TorchBaseFrameModel):

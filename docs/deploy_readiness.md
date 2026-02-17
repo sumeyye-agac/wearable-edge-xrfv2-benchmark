@@ -7,21 +7,21 @@ This document tracks whether current edge models are ready for production deploy
 - Task: Temporal Action Localization (TAL) on XRFV2-style wearable streams
 - Scope preserved: IMU-centric, edge-first, lightweight models only
 
-## Latest Deploy Candidate
+## Latest Iteration Summary
 
-- Config: `configs/deploy_tiny_tcn.yaml`
-- Train run: `20260217_104534_bcb84607`
-- Eval run (best tested threshold): `20260217_110645_231e9644` with `decode.score_threshold=0.10`
-- Benchmark run: `20260217_110652_bcb84607`
+| Candidate | Config | Best Threshold | mAP avg | F1@0.50 | Precision@0.50 | Recall@0.50 | Params | Latency ms (median / p90) |
+|---|---|---:|---:|---:|---:|---:|---:|---:|
+| Deploy-TCN | `configs/deploy_tiny_tcn.yaml` | `0.10` | `0.00674104` | `0.01220300` | `0.00701292` | `0.04694786` | `2,958` | `0.8968 / 1.3080` |
+| Deploy-TCN-BG | `configs/deploy_tiny_tcn_bg.yaml` | `0.25` | `0.00732479` | `0.01982424` | `0.01258492` | `0.04667131` | `3,007` | `0.9078 / 1.8876` |
+| Deploy-TCN-BG-Plus | `configs/deploy_tiny_tcn_bg_plus.yaml` | `0.25` | `0.00530928` | `0.02080425` | `0.01365863` | `0.04362919` | `4,639` | `1.3576 / 1.6313` |
+| Deploy-TCN-BG-Focal | `configs/deploy_tiny_tcn_bg_focal.yaml` | `0.10` | `0.00698337` | `0.01549867` | `0.00890660` | `0.05964086` | `3,007` | `0.8882 / 1.9123` |
 
-## Measured Metrics
+Best observed:
+- Best mAP avg: `deploy_tiny_tcn_bg` (`0.00732479`)
+- Best F1@0.50: `deploy_tiny_tcn_bg_plus` (`0.02080425`)
 
-- `mAP_avg`: `0.00674104`
-- `F1@0.50`: `0.01220300`
-- `Precision@0.50`: `0.00701292`
-- `Recall@0.50`: `0.04694786`
-- Params: `2,958`
-- CPU latency (`seq_len=2048`): median `0.8968 ms`, p90 `1.3080 ms`
+Full machine-readable summary:
+- `docs/results_deploy_iterations_2026-02-17.json`
 
 ## Readiness Decision
 
@@ -31,11 +31,11 @@ This document tracks whether current edge models are ready for production deploy
 ## Why Not Yet
 
 - Current localization quality remains too low for reliable product behavior.
-- Threshold tuning changes precision/recall balance, but absolute quality remains below practical expectations.
+- Multiple in-scope strategies improved results, but not enough to cross production-ready TAL quality.
 
 ## Next Steps (Still In Scope)
 
-1. Add lightweight sequence heads with stronger temporal context (still edge-small).
-2. Introduce class-balanced/focal-style training in torch backend.
-3. Add validation-based threshold calibration and per-class calibration.
-4. Add stronger IMU-centric augmentation and label denoising checks.
+1. Add edge-small but stronger temporal head (for example compact dilated residual TCN blocks).
+2. Add calibration pipeline for per-class decode thresholds on a held-out validation split.
+3. Add robust class-imbalance handling across full training (class-balanced focal + sampling).
+4. Verify on a true unseen test split (current environment aliases test to train-formatted files).

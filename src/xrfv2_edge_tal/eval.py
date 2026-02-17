@@ -102,6 +102,7 @@ def eval_main(
         backend=backend,
         device=device,
         kernel_size=int(model_cfg.get("kernel_size", state.get("kernel_size", 5))),
+        tcn_layers=int(model_cfg.get("tcn_layers", state.get("tcn_layers", metadata.get("tcn_layers", 1)))),
     )
     model.load_state_dict(state)
 

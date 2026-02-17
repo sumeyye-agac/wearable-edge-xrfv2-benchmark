@@ -44,6 +44,7 @@ def _build_numpy_model(state: dict[str, Any], metadata: dict[str, Any], seed: in
         hidden_dim=int(metadata["hidden_dim"]),
         seed=seed,
         kernel_size=int(state.get("kernel_size", 5)),
+        tcn_layers=int(state.get("tcn_layers", metadata.get("tcn_layers", 1))),
     )
     model.load_state_dict(state)
     return model
@@ -72,6 +73,7 @@ def export_onnx_main(
             self.hidden_dim = int(metadata["hidden_dim"])
             self.num_classes = int(metadata["num_classes"])
             self.kernel_size = int(state.get("kernel_size", 5))
+            self.tcn_layers = int(state.get("tcn_layers", 1))
 
             self.cls_w = nn.Parameter(torch.tensor(state["cls_w"], dtype=torch.float32), requires_grad=False)
             self.cls_b = nn.Parameter(torch.tensor(state["cls_b"], dtype=torch.float32), requires_grad=False)
@@ -93,6 +95,17 @@ def export_onnx_main(
                 for modality in self.modalities
             }
 
+            self.dw_kernels = nn.ParameterDict()
+            if self.model_name == "tiny_tcn" and self.tcn_layers > 1:
+                for modality in self.modalities:
+                    for idx in range(self.tcn_layers - 1):
+                        key = f"dw_kernel::{modality}::{idx}"
+                        if key in state:
+                            self.dw_kernels[f"{modality}__{idx}"] = nn.Parameter(
+                                torch.tensor(state[key], dtype=torch.float32),
+                                requires_grad=False,
+                            )
+
             if self.model_name == "tiny_transformer":
                 self.wq = nn.Parameter(torch.tensor(state["wq"], dtype=torch.float32), requires_grad=False)
                 self.wk = nn.Parameter(torch.tensor(state["wk"], dtype=torch.float32), requires_grad=False)
@@ -111,6 +124,23 @@ def export_onnx_main(
             if self.model_name == "tiny_tcn":
                 h = self._moving_average(x)
                 h = torch.tanh(h @ self.proj_w[modality] + self.proj_b[modality])
+                if self.tcn_layers > 1:
+                    pad = self.kernel_size // 2
+                    for idx in range(self.tcn_layers - 1):
+                        key = f"{modality}__{idx}"
+                        if key not in self.dw_kernels:
+                            continue
+                        k = self.dw_kernels[key]
+                        ht = h.transpose(1, 2)
+                        hpad = torch.nn.functional.pad(ht, (pad, pad), mode="replicate")
+                        conv = torch.nn.functional.conv1d(
+                            hpad,
+                            k,
+                            stride=1,
+                            padding=0,
+                            groups=self.hidden_dim,
+                        )
+                        h = torch.tanh(conv.transpose(1, 2) + h)
                 return h
 
             h = torch.tanh(x @ self.proj_w[modality] + self.proj_b[modality])

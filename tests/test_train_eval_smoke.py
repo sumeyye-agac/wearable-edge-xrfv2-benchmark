@@ -172,3 +172,157 @@ def test_train_eval_dummy_with_selected_modality_and_argmax_decode(tmp_path: Pat
     metrics = json.loads((eval_run / "metrics.json").read_text(encoding="utf-8"))
     assert metrics["decode"]["mode"] == "argmax"
     assert metrics["selected_modalities"] == ["imu_watch"]
+
+
+def test_train_eval_dummy_with_explicit_background_class(tmp_path: Path) -> None:
+    config = {
+        "data": {
+            "modalities": ["imu_phone"],
+        },
+        "model": {
+            "name": "tiny_tcn",
+            "num_classes": 6,
+            "hidden_dim": 10,
+            "kernel_size": 3,
+        },
+        "train": {
+            "epochs": 1,
+            "lr": 0.01,
+            "background_label": 5,
+        },
+        "decode": {
+            "mode": "argmax",
+            "score_threshold": 0.3,
+            "min_len": 2,
+            "nms_tiou": 0.5,
+            "background_class": 5,
+            "smooth_kernel": 3,
+            "min_gap": 1,
+        },
+        "eval": {
+            "split": "test",
+            "max_eval_samples": 4,
+        },
+    }
+
+    train_run = train_main(
+        config=config,
+        data_root=str(tmp_path / "data_root"),
+        adapter_name="dummy",
+        seed=13,
+        runs_dir=str(tmp_path / "runs"),
+    )
+    ckpt = train_run / "checkpoints" / "last.npz"
+    assert ckpt.exists()
+
+    eval_run = eval_main(
+        checkpoint=str(ckpt),
+        config=config,
+        data_root=str(tmp_path / "data_root"),
+        adapter_name="dummy",
+        seed=13,
+        output_dir=str(tmp_path / "runs"),
+    )
+    metrics = json.loads((eval_run / "metrics.json").read_text(encoding="utf-8"))
+    assert metrics["decode"]["background_class"] == 5
+
+
+def test_train_eval_dummy_with_focal_loss_settings(tmp_path: Path) -> None:
+    config = {
+        "model": {
+            "name": "tiny_tcn",
+            "num_classes": 6,
+            "hidden_dim": 12,
+            "kernel_size": 3,
+        },
+        "train": {
+            "epochs": 1,
+            "lr": 0.01,
+            "background_label": 5,
+            "loss": {
+                "focal_gamma": 2.0,
+                "background_weight": 0.5,
+                "class_balance": True,
+            },
+        },
+        "decode": {
+            "mode": "argmax",
+            "score_threshold": 0.3,
+            "min_len": 2,
+            "nms_tiou": 0.5,
+            "background_class": 5,
+            "smooth_kernel": 3,
+            "min_gap": 1,
+        },
+        "eval": {
+            "split": "test",
+            "max_eval_samples": 4,
+        },
+    }
+
+    train_run = train_main(
+        config=config,
+        data_root=str(tmp_path / "data_root"),
+        adapter_name="dummy",
+        seed=17,
+        runs_dir=str(tmp_path / "runs"),
+    )
+    ckpt = train_run / "checkpoints" / "last.npz"
+    assert ckpt.exists()
+
+    metrics = json.loads((train_run / "metrics.json").read_text(encoding="utf-8"))
+    assert metrics["train"]["loss"]["focal_gamma"] == 2.0
+
+
+def test_train_eval_dummy_with_deep_tcn_layers(tmp_path: Path) -> None:
+    config = {
+        "model": {
+            "name": "tiny_tcn",
+            "num_classes": 5,
+            "hidden_dim": 12,
+            "kernel_size": 3,
+            "tcn_layers": 3,
+        },
+        "runtime": {
+            "backend": "torch",
+            "device": "cpu",
+        },
+        "train": {
+            "epochs": 1,
+            "lr": 0.01,
+        },
+        "decode": {
+            "mode": "argmax",
+            "score_threshold": 0.3,
+            "min_len": 2,
+            "nms_tiou": 0.5,
+            "background_class": 0,
+            "smooth_kernel": 3,
+            "min_gap": 1,
+        },
+        "eval": {
+            "split": "test",
+            "max_eval_samples": 2,
+        },
+    }
+
+    train_run = train_main(
+        config=config,
+        data_root=str(tmp_path / "data_root"),
+        adapter_name="dummy",
+        seed=19,
+        runs_dir=str(tmp_path / "runs"),
+    )
+    ckpt = train_run / "checkpoints" / "last.npz"
+    assert ckpt.exists()
+
+    eval_run = eval_main(
+        checkpoint=str(ckpt),
+        config=config,
+        data_root=str(tmp_path / "data_root"),
+        adapter_name="dummy",
+        seed=19,
+        output_dir=str(tmp_path / "runs"),
+    )
+    metrics = json.loads((eval_run / "metrics.json").read_text(encoding="utf-8"))
+    assert "eval" in metrics

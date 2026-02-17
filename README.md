@@ -115,15 +115,18 @@ Recommendation:
 
 ### Deploy-Oriented IMU-Only Run (2026-02-17)
 
-Using `configs/deploy_tiny_tcn.yaml` (IMU-only, argmax decode, smoothing):
+Iterated deploy candidates (all edge-small):
 
-| Model | Train Run ID | Eval Run ID | Decode Thr | mAP avg | F1@0.50 | Params | CPU Latency ms (median / p90) |
-|---|---|---|---:|---:|---:|---:|---:|
-| Deploy TinyTCN | `20260217_104534_bcb84607` | `20260217_110645_231e9644` | `0.10` | `0.00674104` | `0.01220300` | `2,958` | `0.8968 / 1.3080` |
+| Candidate | Config | Best Thr | mAP avg | F1@0.50 | Params | CPU Latency ms (median / p90) |
+|---|---|---:|---:|---:|---:|---:|
+| Deploy-TCN | `configs/deploy_tiny_tcn.yaml` | `0.10` | `0.00674104` | `0.01220300` | `2,958` | `0.8968 / 1.3080` |
+| Deploy-TCN-BG | `configs/deploy_tiny_tcn_bg.yaml` | `0.25` | `0.00732479` | `0.01982424` | `3,007` | `0.9078 / 1.8876` |
+| Deploy-TCN-BG-Plus | `configs/deploy_tiny_tcn_bg_plus.yaml` | `0.25` | `0.00530928` | `0.02080425` | `4,639` | `1.3576 / 1.6313` |
+| Deploy-TCN-BG-Focal | `configs/deploy_tiny_tcn_bg_focal.yaml` | `0.10` | `0.00698337` | `0.01549867` | `3,007` | `0.8882 / 1.9123` |
 
 Status:
 - Edge/runtime is deployment-grade.
-- TAL quality improved versus earlier lightweight runs, but is still below a typical production-quality localization bar.
+- TAL quality improved versus earlier lightweight runs, but remains below a typical production-quality localization bar.
 - See `docs/deploy_readiness.md` for current gate status and next steps.
 
 ## Edge Metrics

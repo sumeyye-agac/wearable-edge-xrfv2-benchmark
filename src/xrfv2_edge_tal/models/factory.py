@@ -31,11 +31,13 @@ def build_model(
 
         if model_name == "tiny_tcn":
             kernel_size = int(kwargs.get("kernel_size", 5))
+            tcn_layers = int(kwargs.get("tcn_layers", 1))
             return TorchTinyTCN(
                 input_dims=input_dims,
                 num_classes=num_classes,
                 hidden_dim=hidden_dim,
                 kernel_size=kernel_size,
+                tcn_layers=tcn_layers,
                 seed=seed,
                 device=device,
             )

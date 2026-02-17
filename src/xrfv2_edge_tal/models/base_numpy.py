@@ -100,6 +100,10 @@ class BaseNumpyFrameModel:
         teacher_probs: np.ndarray | None = None,
         distill_weight: float = 0.0,
         temperature: float = 2.0,
+        focal_gamma: float = 0.0,
+        background_label: int = 0,
+        background_weight: float = 1.0,
+        class_balance: bool = False,
     ) -> float:
         logits, _, fused = self.forward(x_dict, training=True, modality_dropout_p=modality_dropout_p)
         probs = softmax(logits)
@@ -108,11 +112,28 @@ class BaseNumpyFrameModel:
         t = np.clip(t, 0, self.num_classes - 1)
 
         n = max(len(t), 1)
-        loss = float(-np.mean(np.log(np.maximum(probs[np.arange(len(t)), t], 1e-12))))
+        ce = -np.log(np.maximum(probs[np.arange(len(t)), t], 1e-12))
+
+        weights = np.ones((len(t),), dtype=np.float32)
+        if 0 <= int(background_label) < self.num_classes and background_weight != 1.0:
+            weights[t == int(background_label)] *= float(background_weight)
+        if class_balance and len(t) > 0:
+            classes, counts = np.unique(t, return_counts=True)
+            inv = {int(c): 1.0 / float(max(cnt, 1)) for c, cnt in zip(classes, counts, strict=True)}
+            mean_inv = float(np.mean(list(inv.values()))) if inv else 1.0
+            for cls, inv_w in inv.items():
+                weights[t == cls] *= float(inv_w / max(mean_inv, 1e-12))
+
+        if focal_gamma > 0.0:
+            pt = np.maximum(probs[np.arange(len(t)), t], 1e-12)
+            ce = ((1.0 - pt) ** float(focal_gamma)) * ce
+
+        loss = float(np.sum(ce * weights) / max(np.sum(weights), 1e-9))
 
         grad_ce = probs.copy()
         grad_ce[np.arange(len(t)), t] -= 1.0
-        grad_ce /= n
+        grad_ce *= weights[:, None]
+        grad_ce /= max(np.sum(weights), 1e-9)
 
         grad = grad_ce
         kd_loss = 0.0

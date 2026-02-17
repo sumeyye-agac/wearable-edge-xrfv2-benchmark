@@ -24,6 +24,7 @@ def _build_model_from_checkpoint(state: dict[str, Any], metadata: dict[str, Any]
         backend=str(metadata.get("backend", "numpy")),
         device=str(metadata.get("device", "auto")),
         kernel_size=int(state.get("kernel_size", 5)),
+        tcn_layers=int(state.get("tcn_layers", metadata.get("tcn_layers", 1))),
     )
     model.load_state_dict(state)
     return model
