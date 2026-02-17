@@ -21,6 +21,8 @@ def _build_model_from_checkpoint(state: dict[str, Any], metadata: dict[str, Any]
         num_classes=int(metadata["num_classes"]),
         hidden_dim=int(metadata["hidden_dim"]),
         seed=seed,
+        backend=str(metadata.get("backend", "numpy")),
+        device=str(metadata.get("device", "auto")),
         kernel_size=int(state.get("kernel_size", 5)),
     )
     model.load_state_dict(state)
@@ -94,6 +96,12 @@ def benchmark_main(
     payload = {
         "params": params,
         "checkpoint_size_mb": float(checkpoint_size_mb),
+        "estimated_fps_median": float(1000.0 / max(latency["median"], 1e-9)),
+        "estimated_fps_p90": float(1000.0 / max(latency["p90"], 1e-9)),
+        "latency_budget_pass_50ms": bool(latency["p90"] <= 50.0),
+        "edge_score_simple": float(
+            (1.0 / max(latency["p90"], 1e-6)) * (1.0 / max(checkpoint_size_mb, 1e-6))
+        ),
         "cpu_latency_ms": {
             **latency,
             "warmup": warmup,

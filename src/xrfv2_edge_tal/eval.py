@@ -20,6 +20,12 @@ from xrfv2_edge_tal.metrics.tal_map import (
     match_predictions_at_tiou,
 )
 from xrfv2_edge_tal.models.factory import build_model
+from xrfv2_edge_tal.paper_track import (
+    aggregate_window_probs,
+    make_windows,
+    resample_sample,
+    to_frame_segments,
+)
 from xrfv2_edge_tal.postprocess.nms import temporal_nms
 
 
@@ -79,6 +85,12 @@ def eval_main(
     split = str(eval_cfg.get("split", "test"))
     max_eval_samples = int(eval_cfg.get("max_eval_samples", 0))
     max_seq_len = int(eval_cfg.get("max_seq_len", 0))
+    paper_cfg = eval_cfg.get("paper_track", {})
+    paper_enabled = bool(paper_cfg.get("enabled", False))
+    paper_clip_len = int(paper_cfg.get("clip_len", 2048))
+    paper_stride = int(paper_cfg.get("stride", 256))
+    paper_min_coverage = float(paper_cfg.get("min_segment_coverage", 0.25))
+    paper_resample_to = int(paper_cfg.get("resample_to", 0))
 
     score_threshold = float(decode_cfg.get("score_threshold", 0.5))
     min_len = int(decode_cfg.get("min_len", 3))
@@ -93,6 +105,8 @@ def eval_main(
         split_ids = split_ids[:max_eval_samples]
     for sample_id in split_ids:
         x, segments, _ = adapter.get_sample(sample_id, split)
+        full_seq_len = int(next(iter(x.values())).shape[0])
+        segments = to_frame_segments(segments=segments, seq_len=full_seq_len)
         if max_seq_len > 0:
             full_len = int(next(iter(x.values())).shape[0])
             x = {k: v[:max_seq_len] for k, v in x.items()}
@@ -100,9 +114,6 @@ def eval_main(
             for seg in segments:
                 raw_start = float(seg["start"])
                 raw_end = float(seg["end"])
-                if raw_end <= 1.0 and raw_start <= 1.0:
-                    raw_start *= full_len
-                    raw_end *= full_len
                 if raw_start >= max_seq_len:
                     continue
                 clipped.append(
@@ -113,8 +124,35 @@ def eval_main(
                     }
                 )
             segments = clipped
-        probs = model.predict_proba(x)
-        seq_len = int(probs.shape[0])
+            full_seq_len = min(full_len, max_seq_len)
+
+        if paper_enabled:
+            if paper_resample_to > 0:
+                x, segments = resample_sample(x_dict=x, segments=segments, target_len=paper_resample_to)
+                full_seq_len = paper_resample_to
+
+            windows = make_windows(
+                x_dict=x,
+                segments=segments,
+                clip_len=paper_clip_len,
+                stride=paper_stride,
+                min_coverage=paper_min_coverage,
+            )
+            window_probs: list[np.ndarray] = []
+            starts: list[int] = []
+            valid_lens: list[int] = []
+            for window in windows:
+                window_probs.append(model.predict_proba(window["x"]))
+                starts.append(int(window["start"]))
+                valid_lens.append(int(window["valid_len"]))
+            probs = aggregate_window_probs(
+                window_probs=window_probs,
+                starts=starts,
+                valid_lens=valid_lens,
+                full_len=full_seq_len,
+            )
+        else:
+            probs = model.predict_proba(x)
 
         decoded = decode_framewise_probs(
             probs=probs,
@@ -136,17 +174,12 @@ def eval_main(
             )
 
         for seg in segments:
-            raw_start = float(seg["start"])
-            raw_end = float(seg["end"])
-            if raw_end <= 1.0 and raw_start <= 1.0:
-                raw_start *= seq_len
-                raw_end *= seq_len
             gts.append(
                 {
                     "sample_id": sample_id,
                     "label": int(seg["label"]),
-                    "start": float(raw_start),
-                    "end": float(raw_end),
+                    "start": float(seg["start"]),
+                    "end": float(seg["end"]),
                 }
             )
 
@@ -179,6 +212,13 @@ def eval_main(
         "class_hist": class_hist,
         "num_predictions": len(preds),
         "num_gt_segments": len(gts),
+        "paper_track": {
+            "enabled": paper_enabled,
+            "clip_len": paper_clip_len,
+            "stride": paper_stride,
+            "min_segment_coverage": paper_min_coverage,
+            "resample_to": paper_resample_to,
+        },
     }
 
     run_dir = create_run_dir(base_dir=output_dir, config_dict=config, command_str="xrfv2-edge-tal eval")

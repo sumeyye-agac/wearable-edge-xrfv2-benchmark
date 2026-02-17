@@ -52,6 +52,38 @@ xrfv2-edge-tal train --config configs/dummy_tiny_tcn.yaml --adapter xrfv2 --data
 xrfv2-edge-tal eval --checkpoint runs/<TRAIN_RUN>/checkpoints/last.npz --config configs/dummy_tiny_tcn.yaml --adapter xrfv2 --data-root /path/to/xrfv2 --seed 42
 ```
 
+## Paper-Aligned Lightweight Track (Edge-Oriented)
+
+This repo now supports a **paper-aligned data/training protocol** with lighter models:
+- sliding windows (`clip_len=2048`, overlap stride)
+- optional interpolation to fixed temporal length
+- partial-segment coverage rule (`min_segment_coverage=0.25`)
+- overlap-averaged inference for evaluation
+- cosine LR schedule and light numeric augmentation
+
+Use:
+
+```bash
+xrfv2-edge-tal train --config configs/paper_light_tiny_tcn.yaml --adapter xrfv2 --data-root /path/to/xrfv2 --seed 42
+xrfv2-edge-tal eval --checkpoint runs/<TRAIN_RUN>/checkpoints/last.npz --config configs/paper_light_tiny_tcn.yaml --adapter xrfv2 --data-root /path/to/xrfv2 --seed 42
+xrfv2-edge-tal benchmark --checkpoint runs/<TRAIN_RUN>/checkpoints/last.npz --config configs/paper_light_tiny_tcn.yaml --seed 42
+```
+
+Why this track:
+- aligned with paper-level protocol choices where possible
+- intentionally different architecture choice (TinyTCN/TinyTransformer) for edge deployment constraints
+
+### Paper-Light Pilot Snapshot (2026-02-17, 256-sample real subset, MPS)
+
+| Model | Train Run ID | Eval Run ID | Decode Thr | mAP avg | F1@0.50 | Params | CPU Latency ms (median / p90) |
+|---|---|---|---:|---:|---:|---:|---:|
+| TinyTCN (paper_light) | `20260217_082536_b7df6361` | `20260217_082752_8cadc1c9` | `0.05` | `0.00096571` | `0.00286970` | `8,238` | `3.276 / 3.779` |
+| TinyTransformer (paper_light) | `20260217_082801_06d434b9` | `20260217_083024_c731d84d` | `0.01` | `0.00000113` | `0.00019417` | `8,070` | `5.560 / 6.504` |
+
+Notes:
+- These are short pilot runs (`epochs=1`, `max_train_samples=256`) to validate the protocol and edge behavior quickly.
+- Full training is expected to improve TAL quality but require significantly more wall-clock time.
+
 ## Latest Real-Run Snapshot (2026-02-17)
 
 Measured on the full available Kaggle XRFV2 release in this environment.
@@ -77,6 +109,8 @@ Outputs include:
 - total parameters
 - checkpoint/model size (MB)
 - CPU latency (`median`, `p90`) after warmup
+- estimated FPS (`median`, `p90`)
+- simple edge readiness flag (`latency_budget_pass_50ms`)
 
 ONNX export:
 ```bash
