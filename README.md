@@ -73,29 +73,25 @@ Why this track:
 - aligned with paper-level protocol choices where possible
 - intentionally different architecture choice (TinyTCN/TinyTransformer) for edge deployment constraints
 
-### Paper-Light Pilot Snapshot (2026-02-17, 256-sample real subset, MPS)
+### Paper-Light Full Snapshot (2026-02-17, full 9,660-sample split, MPS)
 
-| Model | Train Run ID | Eval Run ID | Decode Thr | mAP avg | F1@0.50 | Params | CPU Latency ms (median / p90) |
-|---|---|---|---:|---:|---:|---:|---:|
-| TinyTCN (paper_light) | `20260217_082536_b7df6361` | `20260217_082752_8cadc1c9` | `0.05` | `0.00096571` | `0.00286970` | `8,238` | `3.276 / 3.779` |
-| TinyTransformer (paper_light) | `20260217_082801_06d434b9` | `20260217_083024_c731d84d` | `0.01` | `0.00000113` | `0.00019417` | `8,070` | `5.560 / 6.504` |
-
-Notes:
-- These are short pilot runs (`epochs=1`, `max_train_samples=256`) to validate the protocol and edge behavior quickly.
-- Full training is expected to improve TAL quality but require significantly more wall-clock time.
-
-## Latest Real-Run Snapshot (2026-02-17)
-
-Measured on the full available Kaggle XRFV2 release in this environment.
-
-| Model | Train Run ID | Eval Run ID (thr=0.35) | mAP avg (thr=0.35 decode) | mAP avg (thr=0.05 decode) | Params | CPU Latency ms (median / p90) |
-|---|---|---|---:|---:|---:|---:|
-| TinyTCN | `20260217_005508_d0613500` | `20260217_011540_d0613500` | `0.00000000` | `0.00013746` | `10,974` | `35.7483 / 45.0604` |
-| TinyTransformer | `20260217_011550_2a6307aa` | `20260217_020811_2a6307aa` | `0.00000000` | `0.00000090` | `14,046` | `94.7648 / 194.0851` |
+| Model | Train Run ID | Train Time | Eval Run ID (default) | mAP avg (default thr) | Eval Run ID (low thr) | mAP avg (low thr) | F1@0.50 (low thr) | Params | CPU Latency ms (median / p90) |
+|---|---|---:|---|---:|---|---:|---:|---:|---:|
+| TinyTCN (paper_light) | `20260217_084124_193926b4` | `1129.74s` | `20260217_090230_193926b4` | `0.00041413` (`thr=0.15`) | `20260217_090543_95e081bb` | `0.00538485` (`thr=0.05`) | `0.01056355` | `8,238` | `2.0787 / 2.4219` |
+| TinyTransformer (paper_light) | `20260217_090601_220f81dd` | `2121.79s` | `20260217_094353_220f81dd` | `0.00000037` (`thr=0.15`) | `20260217_094649_ef914fb6` | `0.00000235` (`thr=0.01`) | `0.00060719` | `8,070` | `8.8821 / 10.3658` |
 
 Notes:
-- Kaggle package currently lacks `test_data.h5` and `test_label.json`; local run used aliases to the available train files for executable end-to-end validation.
-- Full analysis artifacts were generated under `/tmp/real_xrfv2_runs/` including `real_analysis_full.md` and `real_analysis_full.json`.
+- Kaggle package currently lacks separate test files; local run uses `test_*` aliases to available train files for executable end-to-end validation.
+- Full report artifacts are tracked in:
+  - `docs/results_paper_light_full_2026-02-17.md`
+  - `docs/results_paper_light_full_2026-02-17.json`
+
+### Paper-Light Pilot Snapshot (2026-02-17, 256-sample subset)
+
+| Model | Train Run ID | Eval Run ID | Decode Thr | mAP avg | F1@0.50 |
+|---|---|---|---:|---:|---:|
+| TinyTCN | `20260217_082536_b7df6361` | `20260217_082752_8cadc1c9` | `0.05` | `0.00096571` | `0.00286970` |
+| TinyTransformer | `20260217_082801_06d434b9` | `20260217_083024_c731d84d` | `0.01` | `0.00000113` | `0.00019417` |
 
 ## Edge Metrics
 
