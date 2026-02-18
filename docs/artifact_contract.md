@@ -12,11 +12,18 @@ Each run must emit a self-contained artifact directory under `runs/`.
 - `dataset_fingerprint.json`: lightweight dataset fingerprint (file sizes + hashes + counts).
 - `benchmark.json`: edge benchmarking metrics (params, model size, latency).
 
+## Event-track files
+
+- `profile_metrics.json`: profile-wise metrics map for `earbuds_glasses`, `glasses_only`, optional `all_imu`.
+- `profile_report.md`: table report for profile comparison.
+- `event_predictions.json`: emitted triggers with score/time/profile.
+- `event_ground_truth.json`: GT event starts used for matching.
+
 ## Directory shape
 
 ```text
 runs/
-  20260216_123045_1a2b3c4d/
+  20260218_123045_1a2b3c4d/
     resolved_config.yaml
     env.json
     git.json
@@ -24,6 +31,8 @@ runs/
     metrics.json
     dataset_fingerprint.json
     benchmark.json
+    profile_metrics.json
+    profile_report.md
     checkpoints/
       last.npz
 ```

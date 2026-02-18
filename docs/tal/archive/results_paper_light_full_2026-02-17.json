@@ -1,0 +1,106 @@
+{
+  "date": "2026-02-17",
+  "dataset": {
+    "root": "data/raw/xrfv2_kaggle",
+    "modalities_detected": [
+      "imu",
+      "wifi",
+      "airpods"
+    ],
+    "samples": {
+      "train": 9660,
+      "test": 9660
+    },
+    "notes": [
+      "Kaggle package in this environment did not ship test files; test symlinks target train files for executable end-to-end benchmarking."
+    ]
+  },
+  "runs": {
+    "tiny_tcn": {
+      "config": "configs/paper_light_tiny_tcn.yaml",
+      "train": {
+        "run_id": "20260217_084124_193926b4",
+        "checkpoint": "/tmp/paper_light_full_runs/20260217_084124_193926b4/checkpoints/last.npz",
+        "wall_time_seconds": 1129.74,
+        "epochs": 8,
+        "total_steps": 77280,
+        "final_loss": 2.285003533731089
+      },
+      "eval_default": {
+        "run_id": "20260217_090230_193926b4",
+        "wall_time_seconds": 136.12,
+        "decode_score_threshold": 0.15,
+        "map_avg": 0.0004141275884890708,
+        "f1_at_0_50": 0.0060713954566527575,
+        "precision_at_0_50": 0.0033626426221628346,
+        "recall_at_0_50": 0.031222284738844756,
+        "num_predictions": 973639,
+        "num_gt_segments": 104861
+      },
+      "eval_low_threshold": {
+        "run_id": "20260217_090543_95e081bb",
+        "wall_time_seconds": 194.53,
+        "decode_score_threshold": 0.05,
+        "map_avg": 0.005384851553306505,
+        "f1_at_0_50": 0.010563545505838944,
+        "precision_at_0_50": 0.005501868131606117,
+        "recall_at_0_50": 0.13203192798085084,
+        "num_predictions": 2516418,
+        "num_gt_segments": 104861
+      },
+      "benchmark": {
+        "run_id": "20260217_090556_193926b4",
+        "wall_time_seconds": 1.39,
+        "params": 8238,
+        "checkpoint_size_mb": 0.033451080322265625,
+        "latency_ms_median": 2.0786874811165035,
+        "latency_ms_p90": 2.4219166953116655,
+        "fps_median": 481.0727966971161,
+        "fps_p90": 412.89611733376097
+      }
+    },
+    "tiny_transformer": {
+      "config": "configs/paper_light_tiny_transformer.yaml",
+      "train": {
+        "run_id": "20260217_090601_220f81dd",
+        "checkpoint": "/tmp/paper_light_full_runs/20260217_090601_220f81dd/checkpoints/last.npz",
+        "wall_time_seconds": 2121.79,
+        "epochs": 8,
+        "total_steps": 77280,
+        "final_loss": 2.56382277954686
+      },
+      "eval_default": {
+        "run_id": "20260217_094353_220f81dd",
+        "wall_time_seconds": 147.21,
+        "decode_score_threshold": 0.15,
+        "map_avg": 3.7277396785966444e-07,
+        "f1_at_0_50": 0.0004359320508493644,
+        "precision_at_0_50": 0.0008296978294034205,
+        "recall_at_0_50": 0.0002956294523225985,
+        "num_predictions": 37363,
+        "num_gt_segments": 104861
+      },
+      "eval_low_threshold": {
+        "run_id": "20260217_094649_ef914fb6",
+        "wall_time_seconds": 169.74,
+        "decode_score_threshold": 0.01,
+        "map_avg": 2.3517332422724977e-06,
+        "f1_at_0_50": 0.0006071920298056719,
+        "precision_at_0_50": 0.00042122687870882876,
+        "recall_at_0_50": 0.0010871534698314912,
+        "num_predictions": 270638,
+        "num_gt_segments": 104861
+      },
+      "benchmark": {
+        "run_id": "20260217_094657_220f81dd",
+        "wall_time_seconds": 1.88,
+        "params": 8070,
+        "checkpoint_size_mb": 0.033176422119140625,
+        "latency_ms_median": 8.882061985787004,
+        "latency_ms_p90": 10.365816368721426,
+        "fps_median": 112.58646940318486,
+        "fps_p90": 96.47093527698149
+      }
+    }
+  }
+}

@@ -1,0 +1,74 @@
+{
+  "date": "2026-02-17",
+  "purpose": "capacity scaling ablation on edge-small models",
+  "protocol": {
+    "train_epochs": 2,
+    "train_max_samples": 1024,
+    "train_max_windows_per_sample": 1,
+    "eval_max_samples": 1024,
+    "data_root": "data/raw/xrfv2_kaggle",
+    "backend": "torch+mps"
+  },
+  "tiny_tcn": {
+    "base_config": "configs/paper_light_tiny_tcn.yaml",
+    "plus_config": "configs/paper_light_plus_tiny_tcn.yaml",
+    "base": {
+      "train_run_id": "20260217_095004_0f1d59d8",
+      "train_wall_time_seconds": 134.23,
+      "eval_run_id": "20260217_095234_cc44eaf0",
+      "eval_decode_threshold": 0.05,
+      "map_avg": 1.8564342711725403e-05,
+      "f1_at_0_50": 0.002966955196254559,
+      "benchmark_run_id": "20260217_095239_193926b4",
+      "params": 8238,
+      "latency_ms_median": 2.0847920095548034,
+      "latency_ms_p90": 2.316470176447183
+    },
+    "plus": {
+      "train_run_id": "20260217_095245_c10b791e",
+      "train_wall_time_seconds": 135.89,
+      "eval_run_id": "20260217_095520_5be8cd41",
+      "eval_decode_threshold": 0.05,
+      "map_avg": 5.099759836409863e-05,
+      "f1_at_0_50": 0.0022311267831383232,
+      "benchmark_run_id": "20260217_095526_d01979ed",
+      "params": 16446,
+      "latency_ms_median": 2.144187514204532,
+      "latency_ms_p90": 2.395296038594097
+    },
+    "plus_threshold_tuned": {
+      "eval_run_id": "20260217_100240_a7cde7b6",
+      "eval_decode_threshold": 0.12,
+      "map_avg": 1.845297347646994e-05,
+      "f1_at_0_50": 0.0029909672788179698
+    }
+  },
+  "tiny_transformer": {
+    "base_config": "configs/paper_light_tiny_transformer.yaml",
+    "plus_config": "configs/paper_light_plus_tiny_transformer.yaml",
+    "base": {
+      "train_run_id": "20260217_095534_500a5aab",
+      "train_wall_time_seconds": 161.01,
+      "eval_run_id": "20260217_095839_b8102276",
+      "eval_decode_threshold": 0.01,
+      "map_avg": 1.9639251740296394e-05,
+      "f1_at_0_50": 0.0010240156040472997,
+      "benchmark_run_id": "20260217_095845_220f81dd",
+      "params": 8070,
+      "latency_ms_median": 9.305791987571865,
+      "latency_ms_p90": 10.07587886415422
+    },
+    "plus": {
+      "train_run_id": "20260217_095851_7bc3fe7c",
+      "train_wall_time_seconds": 161.33,
+      "eval_run_id": "20260217_100157_7eb6dbc8",
+      "eval_decode_threshold": 0.01,
+      "map_avg": 1.6126019972389883e-05,
+      "f1_at_0_50": 0.0010240156040472997,
+      "benchmark_run_id": "20260217_100204_55200c16",
+      "params": 14046,
+      "latency_ms_median": 5.704750015866011,
+      "latency_ms_p90": 7.389700296334923
+    }
+  }
+}

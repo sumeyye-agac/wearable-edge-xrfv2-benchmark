@@ -1,158 +1,120 @@
-# XRF V2 – Edge-First Multi-IMU Temporal Action Localization (TAL) Benchmark
+# Deploy-Ready Phone Interaction Event Detection (XRF V2 IMU)
 
-`xrfv2-edge-tal` is a reproducible, edge-focused benchmark for **temporal action localization** on wearable IMU streams (phone/watch/earbuds/glasses).
+This repository is a reproducible, edge-first benchmark for **phone interaction event detection** on **XRF V2 multi-device IMU**, with a default deploy profile that uses only **earbuds + smart glasses**.
 
-This codebase emphasizes:
-- simple, correct TAL baselines (`TinyTCN`, `TinyTransformer`)
-- edge-first reporting (parameter count, checkpoint size, CPU latency)
-- robustness to missing modalities (modality dropout + gating fusion)
-- optional distillation hook (teacher checkpoint -> student subset)
-- reproducible run artifacts for every command
+## What This Repo Does
 
-## Why This Repo
+- Data: XRF V2 (2025), a modern multi-device wearable dataset (phone/watch/earbuds/glasses IMU streams).
+- Task: detect discrete **Phone Interaction Events** (trigger timestamps), not full TAL by default.
+- Product sensor target:
+  - default profile: `earbuds_glasses`
+  - fallback profile: `glasses_only`
+- Product metrics: Precision, Recall, F1, FP/hour, onset delay, CPU latency, model size.
+- Reproducibility: every run writes a strict artifact bundle under `runs/<run_id>/`.
 
-Most TAL examples optimize only mAP. This benchmark treats **deployment constraints** as first-class metrics alongside TAL quality.
+## Why Earbuds + Glasses
 
-## Quickstart (Dummy Data, 3 commands)
+This is an intentional deployment constraint:
+- avoids unrealistic dependence on phone/watch signals that may be unavailable in product runtime
+- matches always-on wearable sensing for hands-free interaction scenarios
+- gives a clear engineering story: robust default path + graceful fallback on earbud disconnect
 
-```bash
-pip install -e ".[dev]"
-xrfv2-edge-tal train --config configs/dummy_tiny_tcn.yaml --adapter dummy --data-root data/raw/dummy --seed 42
-xrfv2-edge-tal eval --checkpoint runs/<TRAIN_RUN>/checkpoints/last.npz --config configs/dummy_tiny_tcn.yaml --adapter dummy --data-root data/raw/dummy --seed 42
-```
+## Data
 
-Notes:
-- Replace `<TRAIN_RUN>` with the generated run folder under `runs/`.
-- Dummy data is synthetic and generated in-memory for testability.
+We do **not** redistribute XRF V2. Obtain it from the **Official XRFV2 repo** / official distribution channels.
 
-## Run On Real XRF V2 Data
-
-### 1) Obtain dataset
-
-Expected directory format:
+Expected raw directory (example: `data/raw/xrfv2/`):
 - `train_data.h5`
 - `train_label.json`
 - `test_data.h5`
 - `test_label.json`
 - `info.json`
 
-See `docs/dataset_xrfv2.md` for acquisition details.
-
-### 2) Inspect + prepare
-
-```bash
-xrfv2-edge-tal inspect --adapter xrfv2 --data-root /path/to/xrfv2
-xrfv2-edge-tal prepare --adapter xrfv2 --data-root /path/to/xrfv2 --output-dir data/processed --seed 42
-```
-
-### 3) Train + evaluate
-
-```bash
-xrfv2-edge-tal train --config configs/dummy_tiny_tcn.yaml --adapter xrfv2 --data-root /path/to/xrfv2 --seed 42
-xrfv2-edge-tal eval --checkpoint runs/<TRAIN_RUN>/checkpoints/last.npz --config configs/dummy_tiny_tcn.yaml --adapter xrfv2 --data-root /path/to/xrfv2 --seed 42
-```
-
-## Paper-Aligned Lightweight Track (Edge-Oriented)
-
-This repo now supports a **paper-aligned data/training protocol** with lighter models:
-- sliding windows (`clip_len=2048`, overlap stride)
-- optional interpolation to fixed temporal length
-- partial-segment coverage rule (`min_segment_coverage=0.25`)
-- overlap-averaged inference for evaluation
-- cosine LR schedule and light numeric augmentation
-
-Use:
-
-```bash
-xrfv2-edge-tal train --config configs/paper_light_tiny_tcn.yaml --adapter xrfv2 --data-root /path/to/xrfv2 --seed 42
-xrfv2-edge-tal eval --checkpoint runs/<TRAIN_RUN>/checkpoints/last.npz --config configs/paper_light_tiny_tcn.yaml --adapter xrfv2 --data-root /path/to/xrfv2 --seed 42
-xrfv2-edge-tal benchmark --checkpoint runs/<TRAIN_RUN>/checkpoints/last.npz --config configs/paper_light_tiny_tcn.yaml --seed 42
-```
-
-Why this track:
-- aligned with paper-level protocol choices where possible
-- intentionally different architecture choice (TinyTCN/TinyTransformer) for edge deployment constraints
-
-Larger edge-small variants are available:
-- `configs/paper_light_plus_tiny_tcn.yaml`
-- `configs/paper_light_plus_tiny_transformer.yaml`
-- deployment-oriented presets:
-  - `configs/deploy_tiny_tcn.yaml`
-  - `configs/deploy_tiny_transformer.yaml`
-
-### Paper-Light Full Snapshot (2026-02-17, full 9,660-sample split, MPS)
-
-| Model | Train Run ID | Train Time | Eval Run ID (default) | mAP avg (default thr) | Eval Run ID (low thr) | mAP avg (low thr) | F1@0.50 (low thr) | Params | CPU Latency ms (median / p90) |
-|---|---|---:|---|---:|---|---:|---:|---:|---:|
-| TinyTCN (paper_light) | `20260217_084124_193926b4` | `1129.74s` | `20260217_090230_193926b4` | `0.00041413` (`thr=0.15`) | `20260217_090543_95e081bb` | `0.00538485` (`thr=0.05`) | `0.01056355` | `8,238` | `2.0787 / 2.4219` |
-| TinyTransformer (paper_light) | `20260217_090601_220f81dd` | `2121.79s` | `20260217_094353_220f81dd` | `0.00000037` (`thr=0.15`) | `20260217_094649_ef914fb6` | `0.00000235` (`thr=0.01`) | `0.00060719` | `8,070` | `8.8821 / 10.3658` |
-
 Notes:
-- Kaggle package currently lacks separate test files; local run uses `test_*` aliases to available train files for executable end-to-end validation.
-- Full report artifacts are tracked in:
-  - `docs/results_paper_light_full_2026-02-17.md`
-  - `docs/results_paper_light_full_2026-02-17.json`
+- XRF V2 can include IMU from phone/watch/earbuds/glasses. This repo defaults to earbuds+glasses only.
+- Earbuds are often sampled lower (commonly 25Hz) while others can be 50Hz; pipeline code converts to a canonical frame representation before training/eval.
 
-### Paper-Light Pilot Snapshot (2026-02-17, 256-sample subset)
+## Event Definition
 
-| Model | Train Run ID | Eval Run ID | Decode Thr | mAP avg | F1@0.50 |
-|---|---|---|---:|---:|---:|
-| TinyTCN | `20260217_082536_b7df6361` | `20260217_082752_8cadc1c9` | `0.05` | `0.00096571` | `0.00286970` |
-| TinyTransformer | `20260217_082801_06d434b9` | `20260217_083024_c731d84d` | `0.01` | `0.00000113` | `0.00019417` |
+Positive event = union of two XRF V2 actions by name:
+- `Answer the phone`
+- `Use phone`
 
-### Capacity Ablation Snapshot (2026-02-17, 2-epoch/1024-sample controlled run)
+Model output is converted to event triggers with:
+- smoothing
+- thresholding
+- cooldown
+- optional hysteresis
 
-| Model | Variant | Params | mAP avg | F1@0.50 | Latency ms (median / p90) |
-|---|---|---:|---:|---:|---:|
-| TinyTCN | base (`paper_light`) | `8,238` | `0.00001856` | `0.00296696` | `2.0848 / 2.3165` |
-| TinyTCN | plus (`paper_light_plus`) | `16,446` | `0.00005100` | `0.00223113` | `2.1442 / 2.3953` |
-| TinyTransformer | base (`paper_light`) | `8,070` | `0.00001964` | `0.00102402` | `9.3058 / 10.0759` |
-| TinyTransformer | plus (`paper_light_plus`) | `14,046` | `0.00001613` | `0.00102402` | `5.7048 / 7.3897` |
+Metrics:
+- Precision / Recall / F1: trigger correctness under onset matching tolerance.
+- FP/hour: false alarms normalized by duration.
+- onset delay: delay between matched prediction and GT start (mean/p50/p90).
 
-Recommendation:
-- If you want a slightly larger model while staying edge-small, start with `paper_light_plus_tiny_tcn`.
-- For full details, see `docs/results_capacity_ablation_2026-02-17.md`.
+Why event detection first (instead of full TAL):
+- closer to a ship-able feature (triggering UX logic)
+- easier false-alarm control
+- cleaner latency and energy budgeting on edge hardware
 
-### Deploy-Oriented IMU-Only Run (2026-02-17)
+## Deployment Profiles
 
-Iterated deploy candidates (all edge-small):
+| Profile | Sensors | Intended use |
+|---|---|---|
+| `earbuds_glasses` | Earbuds + Glasses IMU | Default product target |
+| `glasses_only` | Glasses IMU | Fallback when earbuds disconnect |
+| `all_imu` | Phone + Watch + Earbuds + Glasses IMU | Diagnostic upper bound (non-product) |
 
-| Candidate | Config | Best Thr | mAP avg | F1@0.50 | Params | CPU Latency ms (median / p90) |
-|---|---|---:|---:|---:|---:|---:|
-| Deploy-TCN | `configs/deploy_tiny_tcn.yaml` | `0.10` | `0.00674104` | `0.01220300` | `2,958` | `0.8968 / 1.3080` |
-| Deploy-TCN-BG | `configs/deploy_tiny_tcn_bg.yaml` | `0.25` | `0.00732479` | `0.01982424` | `3,007` | `0.9078 / 1.8876` |
-| Deploy-TCN-BG-Plus | `configs/deploy_tiny_tcn_bg_plus.yaml` | `0.25` | `0.00530928` | `0.02080425` | `4,639` | `1.3576 / 1.6313` |
-| Deploy-TCN-BG-Focal | `configs/deploy_tiny_tcn_bg_focal.yaml` | `0.10` | `0.00698337` | `0.01549867` | `3,007` | `0.8882 / 1.9123` |
+Restricting sensors is deliberate. It improves realism and portfolio differentiation, and avoids inflated scores from signals not guaranteed at runtime. Performance may drop as sensors are removed; this repository reports that explicitly via profile reports.
 
-Status:
-- Edge/runtime is deployment-grade.
-- TAL quality improved versus earlier lightweight runs, but remains below a typical production-quality localization bar.
-- See `docs/deploy_readiness.md` for current gate status and next steps.
-
-## Edge Metrics
-
-Benchmark a checkpoint:
+## Quickstart (No Dataset Required)
 
 ```bash
-xrfv2-edge-tal benchmark --checkpoint runs/<TRAIN_RUN>/checkpoints/last.npz --config configs/dummy_tiny_tcn.yaml --seed 42
+pip install -e ".[dev]"
+xrfv2-edge-tal event-train --config configs/event_phone_interaction.yaml --adapter dummy
+xrfv2-edge-tal event-eval --config configs/event_phone_interaction.yaml --adapter dummy --checkpoint runs/<train_run_id>/checkpoints/last.npz
 ```
 
-Outputs include:
-- total parameters
-- checkpoint/model size (MB)
-- CPU latency (`median`, `p90`) after warmup
-- estimated FPS (`median`, `p90`)
-- simple edge readiness flag (`latency_budget_pass_50ms`)
+Expected JSON output keys (example):
 
-ONNX export:
+```json
+{
+  "event_metrics": {},
+  "profile": "earbuds_glasses",
+  "profile_metrics": {},
+  "edge": {},
+  "calibration": {},
+  "diagnostics": {}
+}
+```
+
+## Run on Real XRF V2
+
+1. Obtain the raw files listed above and place them under `data/raw/xrfv2` (or pass your own path).
+2. Prepare:
+
 ```bash
-xrfv2-edge-tal export-onnx --checkpoint runs/<TRAIN_RUN>/checkpoints/last.npz --config configs/dummy_tiny_tcn.yaml --output-path artifacts/model.onnx --seed 42
+xrfv2-edge-tal inspect --adapter xrfv2 --data-root data/raw/xrfv2 --list-modalities
+xrfv2-edge-tal prepare --adapter xrfv2 --data-root data/raw/xrfv2 --output-dir data/processed
 ```
-(`torch` + `onnxruntime` are required for ONNX export verification.)
+
+3. Train and evaluate event detector:
+
+```bash
+xrfv2-edge-tal event-train --config configs/event_phone_interaction.yaml --adapter xrfv2 --data-root data/raw/xrfv2 --profile earbuds_glasses
+xrfv2-edge-tal event-eval --config configs/event_phone_interaction.yaml --adapter xrfv2 --data-root data/raw/xrfv2 --profile earbuds_glasses --checkpoint runs/<train_run_id>/checkpoints/last.npz
+```
+
+4. Multi-profile comparison report:
+
+```bash
+xrfv2-edge-tal event-eval --config configs/event_phone_interaction.yaml --adapter xrfv2 --data-root data/raw/xrfv2 --profiles earbuds_glasses,glasses_only --checkpoint runs/<train_run_id>/checkpoints/last.npz
+```
+
+Artifacts are saved in `runs/<run_id>/...` including `metrics.json`, `profile_metrics.json`, and `profile_report.md`.
 
 ## Reproducibility Contract
 
-Each run writes artifacts under `runs/<run_id>/`:
+Every run writes:
 - `resolved_config.yaml`
 - `env.json`
 - `git.json`
@@ -160,44 +122,14 @@ Each run writes artifacts under `runs/<run_id>/`:
 - `metrics.json`
 - `dataset_fingerprint.json`
 - `benchmark.json`
+- `profile_metrics.json` (event multi-profile eval)
+- `profile_report.md` (event multi-profile eval)
 
-See `docs/artifact_contract.md` for full contract.
+See `docs/artifact_contract.md`.
 
-## Baselines
+## Additional Track (TAL)
 
-- `TinyTCN`: lightweight temporal smoothing + framewise classifier
-- `TinyTransformer`: tiny self-attention framewise classifier
-- Shared postprocessing: framewise-to-segment decoding + temporal NMS
-
-## TAL Metrics
-
-Implemented TAL evaluation:
-- segment tIoU
-- AP@tIoU
-- mAP averaged over thresholds `0.50:0.05:0.95`
-
-## Citation
-
-If you use this benchmark, cite this repository and the original XRF V2 dataset source.
-
-```bibtex
-@software{agac2026xrfv2edgetal,
-  title = {XRF V2 Edge TAL Benchmark},
-  author = {Agac, Sumeyye and contributors},
-  year = {2026},
-  url = {https://github.com/sumeyye-agac/wearable-edge-xrfv2-benchmark}
-}
-```
-
-## Scope
-
-Current scope is IMU-centric TAL. Wi-Fi and video streams are intentionally out of scope for v1.
-
-## Roadmap
-
-- knowledge distillation hooks (teacher all modalities -> student subset)
-- INT8 quantization benchmarking on edge CPUs
-- richer ablations for modality failure modes
+Full TAL baselines and historical TAL reports are kept as a secondary track. Archive docs are under `docs/tal/archive/`.
 
 ## License
 
