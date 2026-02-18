@@ -32,13 +32,18 @@ htmlcov/
 checkpoints/
 artifacts/
 logs/
+exports/
+models/
 *.pt
 *.pth
 *.ckpt
+*.npz
+*.bin
 *.onnx
 *.h5
 *.hdf5
 *.parquet
+*.tflite
 
 # Notebook artifacts
 .ipynb_checkpoints/
