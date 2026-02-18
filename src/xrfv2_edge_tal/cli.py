@@ -216,17 +216,18 @@ def cmd_event_train(
     profile: str | None,
     overrides: list[str],
 ) -> None:
-    from xrfv2_edge_tal.train import train_main
+    from xrfv2_edge_tal.event.train_event import train_event_main
 
     cfg = load_yaml_config(config)
     cfg = apply_cli_overrides(cfg, overrides)
     cfg = _apply_profile_modalities(cfg, profile)
-    run_dir = train_main(
+    run_dir = train_event_main(
         config=cfg,
         data_root=data_root,
         adapter_name=adapter,
         seed=seed,
         runs_dir=runs_dir,
+        profile=cfg["data"]["selected_profile"],
     )
     _echo(f"Event training run dir: {run_dir}")
     _echo(f"Profile: {cfg['data']['selected_profile']}")
@@ -241,20 +242,25 @@ def cmd_event_eval(
     seed: int,
     output_dir: str,
     profile: str | None,
+    profiles: str | None,
     overrides: list[str],
 ) -> None:
-    from xrfv2_edge_tal.eval import eval_main
+    from xrfv2_edge_tal.event.eval_event import eval_event_main
 
     cfg = load_yaml_config(config)
     cfg = apply_cli_overrides(cfg, overrides)
-    cfg = _apply_profile_modalities(cfg, profile)
-    run_dir = eval_main(
+    profile_list = [item.strip() for item in profiles.split(",")] if profiles else None
+    default_profile = profile_list[0] if profile_list else profile
+    cfg = _apply_profile_modalities(cfg, default_profile)
+    run_dir = eval_event_main(
         checkpoint=checkpoint,
         config=cfg,
         data_root=data_root,
         adapter_name=adapter,
         seed=seed,
         output_dir=output_dir,
+        profile=cfg["data"]["selected_profile"],
+        profiles=profile_list,
     )
     _echo(f"Event eval run dir: {run_dir}")
     _echo(f"Profile: {cfg['data']['selected_profile']}")
@@ -377,6 +383,7 @@ if HAS_TYPER:
         seed: int = 42,
         output_dir: str = "runs",
         profile: str | None = None,
+        profiles: str | None = None,
         override: list[str] | None = None,
     ) -> None:
         cmd_event_eval(
@@ -387,6 +394,7 @@ if HAS_TYPER:
             seed=seed,
             output_dir=output_dir,
             profile=profile,
+            profiles=profiles,
             overrides=override or [],
         )
 
@@ -464,6 +472,7 @@ else:
         p_event_eval.add_argument("--seed", type=int, default=42)
         p_event_eval.add_argument("--output-dir", default="runs")
         p_event_eval.add_argument("--profile", default=None)
+        p_event_eval.add_argument("--profiles", default=None)
         p_event_eval.add_argument("--override", action="append", default=[])
 
         p_bench = sub.add_parser("benchmark")
@@ -528,6 +537,7 @@ else:
                 seed=args.seed,
                 output_dir=args.output_dir,
                 profile=args.profile,
+                profiles=args.profiles,
                 overrides=args.override,
             )
         elif args.command == "benchmark":

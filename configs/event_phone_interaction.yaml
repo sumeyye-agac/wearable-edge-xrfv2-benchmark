@@ -41,3 +41,12 @@ decode:
 eval:
   split: test
   frame_time_s: 0.02
+  onset_tolerance_s: 0.5
+  benchmark_warmup: 5
+  benchmark_iters: 20
+  trigger:
+    threshold: 0.55
+    smoothing_window: 5
+    cooldown_s: 0.75
+    hysteresis: false
+    threshold_off: 0.40
