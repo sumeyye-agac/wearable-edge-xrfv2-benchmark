@@ -318,7 +318,7 @@ if HAS_TYPER:
 
     @app.command("train")
     def train(
-        config: str,
+        config: str = typer.Option(..., "--config"),
         data_root: str = "data/raw/xrfv2",
         adapter: str = "dummy",
         seed: int = 42,
@@ -336,8 +336,8 @@ if HAS_TYPER:
 
     @app.command("eval")
     def evaluate(
-        checkpoint: str,
-        config: str,
+        checkpoint: str = typer.Option(..., "--checkpoint"),
+        config: str = typer.Option(..., "--config"),
         data_root: str = "data/raw/xrfv2",
         adapter: str = "dummy",
         seed: int = 42,
@@ -356,7 +356,7 @@ if HAS_TYPER:
 
     @app.command("event-train")
     def event_train(
-        config: str,
+        config: str = typer.Option(..., "--config"),
         data_root: str = "data/raw/xrfv2",
         adapter: str = "dummy",
         seed: int = 42,
@@ -376,8 +376,8 @@ if HAS_TYPER:
 
     @app.command("event-eval")
     def event_evaluate(
-        checkpoint: str,
-        config: str,
+        checkpoint: str = typer.Option(..., "--checkpoint"),
+        config: str = typer.Option(..., "--config"),
         data_root: str = "data/raw/xrfv2",
         adapter: str = "dummy",
         seed: int = 42,
@@ -400,8 +400,8 @@ if HAS_TYPER:
 
     @app.command("benchmark")
     def benchmark(
-        checkpoint: str,
-        config: str,
+        checkpoint: str = typer.Option(..., "--checkpoint"),
+        config: str = typer.Option(..., "--config"),
         seed: int = 42,
         output_dir: str = "runs",
     ) -> None:
@@ -409,9 +409,9 @@ if HAS_TYPER:
 
     @app.command("export-onnx")
     def export_onnx(
-        checkpoint: str,
-        config: str,
-        output_path: str,
+        checkpoint: str = typer.Option(..., "--checkpoint"),
+        config: str = typer.Option(..., "--config"),
+        output_path: str = typer.Option(..., "--output-path"),
         seed: int = 42,
     ) -> None:
         cmd_export_onnx(checkpoint=checkpoint, config=config, output_path=output_path, seed=seed)

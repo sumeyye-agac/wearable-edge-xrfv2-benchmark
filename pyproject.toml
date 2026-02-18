@@ -43,7 +43,7 @@ ignore = ["E501"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-addopts = "-q"
+addopts = "-q -p no:capture"
 
 [tool.mypy]
 python_version = "3.10"
