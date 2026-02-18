@@ -19,6 +19,7 @@ from xrfv2_edge_tal.metrics.tal_map import (
     map_over_thresholds,
     match_predictions_at_tiou,
 )
+from xrfv2_edge_tal.modalities import resolve_modalities_to_raw_keys
 from xrfv2_edge_tal.models.factory import build_model
 from xrfv2_edge_tal.paper_track import (
     aggregate_window_probs,
@@ -57,7 +58,11 @@ def _parse_modalities(value: Any) -> list[str] | None:
 def _select_modalities(x: dict[str, np.ndarray], selected: list[str] | None) -> dict[str, np.ndarray]:
     if not selected:
         return x
-    out = {k: v for k, v in x.items() if k in selected}
+    selected_keys = resolve_modalities_to_raw_keys(
+        available_modalities=x.keys(),
+        requested_modalities=selected,
+    )
+    out = {k: x[k] for k in selected_keys if k in x}
     if not out:
         available = ", ".join(sorted(x.keys()))
         wanted = ", ".join(selected)

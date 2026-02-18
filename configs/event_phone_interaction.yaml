@@ -1,0 +1,43 @@
+seed: 42
+
+data:
+  profiles:
+    earbuds_glasses: ["earbuds", "glasses"]
+    glasses_only: ["glasses"]
+    all_imu: ["phone", "watch", "earbuds", "glasses"]
+  default_profile: earbuds_glasses
+
+labels:
+  positive_action_names:
+    - "Answer the phone"
+    - "Use phone"
+  positive_label_ids: []
+
+model:
+  name: tiny_tcn
+  num_classes: 2
+  hidden_dim: 24
+  kernel_size: 5
+
+runtime:
+  backend: torch
+  device: auto
+
+train:
+  epochs: 3
+  lr: 0.001
+  modality_dropout_p: 0.1
+  background_label: 0
+
+decode:
+  mode: argmax
+  score_threshold: 0.55
+  min_len: 2
+  nms_tiou: 0.5
+  background_class: 0
+  smooth_kernel: 5
+  min_gap: 1
+
+eval:
+  split: test
+  frame_time_s: 0.02

@@ -15,6 +15,7 @@ from xrfv2_edge_tal.artifacts import create_run_dir, write_metrics
 from xrfv2_edge_tal.checkpoint import load_checkpoint, save_checkpoint
 from xrfv2_edge_tal.data.adapters import DummyAdapter, XRFV2H5Adapter
 from xrfv2_edge_tal.data.prepare import compute_dataset_fingerprint
+from xrfv2_edge_tal.modalities import resolve_modalities_to_raw_keys
 from xrfv2_edge_tal.models.factory import build_model
 from xrfv2_edge_tal.paper_track import (
     augment_modalities,
@@ -52,7 +53,11 @@ def _parse_modalities(value: Any) -> list[str] | None:
 def _select_modalities(x: dict[str, np.ndarray], selected: list[str] | None) -> dict[str, np.ndarray]:
     if not selected:
         return x
-    out = {k: v for k, v in x.items() if k in selected}
+    selected_keys = resolve_modalities_to_raw_keys(
+        available_modalities=x.keys(),
+        requested_modalities=selected,
+    )
+    out = {k: x[k] for k in selected_keys if k in x}
     if not out:
         available = ", ".join(sorted(x.keys()))
         wanted = ", ".join(selected)

@@ -14,6 +14,7 @@ from typing import Any
 from xrfv2_edge_tal.config import apply_cli_overrides, load_yaml_config
 from xrfv2_edge_tal.data.adapters import DummyAdapter, XRFV2H5Adapter
 from xrfv2_edge_tal.data.prepare import prepare_dataset
+from xrfv2_edge_tal.modalities import resolve_requested_modalities
 
 try:
     import typer
@@ -84,7 +85,12 @@ def _directory_summary(root: Path) -> list[dict[str, Any]]:
     return out
 
 
-def cmd_inspect(adapter: str = "dummy", data_root: str = "data/raw/xrfv2", seed: int = 42) -> None:
+def cmd_inspect(
+    adapter: str = "dummy",
+    data_root: str = "data/raw/xrfv2",
+    seed: int = 42,
+    list_modalities: bool = False,
+) -> None:
     root = Path(data_root)
     summary = _directory_summary(root)
 
@@ -103,12 +109,15 @@ def cmd_inspect(adapter: str = "dummy", data_root: str = "data/raw/xrfv2", seed:
         _echo(f"Adapter inspection failed: {exc}")
         return
 
-    details = {
+    details: dict[str, Any] = {
         "adapter": adapter,
         "modalities": ds.modalities,
         "train_count": len(ds.split_ids("train")),
         "test_count": len(ds.split_ids("test")),
     }
+    if list_modalities:
+        canonical = resolve_requested_modalities(ds.modalities, requested_modalities=None)
+        details["canonical_modalities"] = canonical
     _echo(json.dumps(details, indent=2, sort_keys=True))
 
 
@@ -167,6 +176,91 @@ def cmd_eval(
     _echo(f"Metrics: {run_dir / 'metrics.json'}")
 
 
+def _apply_profile_modalities(cfg: dict[str, Any], profile: str | None) -> dict[str, Any]:
+    cfg_data = dict(cfg.get("data", {}))
+    profiles = cfg_data.get("profiles", {})
+    default_profile = str(cfg_data.get("default_profile", "earbuds_glasses"))
+    selected_profile = profile or default_profile
+
+    if not isinstance(profiles, dict) or not profiles:
+        raise ValueError(
+            "Config is missing data.profiles. Expected mapping like "
+            "{earbuds_glasses: [...], glasses_only: [...]}."
+        )
+    if selected_profile not in profiles:
+        available = ", ".join(sorted(str(k) for k in profiles.keys()))
+        raise ValueError(
+            f"Unknown profile '{selected_profile}'. Available profiles: {available}"
+        )
+
+    selected_modalities = profiles[selected_profile]
+    if not isinstance(selected_modalities, list) or not all(
+        isinstance(item, str) for item in selected_modalities
+    ):
+        raise ValueError(
+            f"Invalid data.profiles.{selected_profile}. Expected list[str], got {type(selected_modalities)!r}"
+        )
+
+    cfg_data["modalities"] = selected_modalities
+    cfg_data["selected_profile"] = selected_profile
+    cfg["data"] = cfg_data
+    return cfg
+
+
+def cmd_event_train(
+    config: str,
+    data_root: str,
+    adapter: str,
+    seed: int,
+    runs_dir: str,
+    profile: str | None,
+    overrides: list[str],
+) -> None:
+    from xrfv2_edge_tal.train import train_main
+
+    cfg = load_yaml_config(config)
+    cfg = apply_cli_overrides(cfg, overrides)
+    cfg = _apply_profile_modalities(cfg, profile)
+    run_dir = train_main(
+        config=cfg,
+        data_root=data_root,
+        adapter_name=adapter,
+        seed=seed,
+        runs_dir=runs_dir,
+    )
+    _echo(f"Event training run dir: {run_dir}")
+    _echo(f"Profile: {cfg['data']['selected_profile']}")
+    _echo(f"Checkpoint: {run_dir / 'checkpoints' / 'last.npz'}")
+
+
+def cmd_event_eval(
+    checkpoint: str,
+    config: str,
+    data_root: str,
+    adapter: str,
+    seed: int,
+    output_dir: str,
+    profile: str | None,
+    overrides: list[str],
+) -> None:
+    from xrfv2_edge_tal.eval import eval_main
+
+    cfg = load_yaml_config(config)
+    cfg = apply_cli_overrides(cfg, overrides)
+    cfg = _apply_profile_modalities(cfg, profile)
+    run_dir = eval_main(
+        checkpoint=checkpoint,
+        config=cfg,
+        data_root=data_root,
+        adapter_name=adapter,
+        seed=seed,
+        output_dir=output_dir,
+    )
+    _echo(f"Event eval run dir: {run_dir}")
+    _echo(f"Profile: {cfg['data']['selected_profile']}")
+    _echo(f"Metrics: {run_dir / 'metrics.json'}")
+
+
 def cmd_benchmark(checkpoint: str, config: str, seed: int, output_dir: str) -> None:
     from xrfv2_edge_tal.benchmark import benchmark_main
 
@@ -203,8 +297,9 @@ if HAS_TYPER:
         adapter: str = "dummy",
         data_root: str = "data/raw/xrfv2",
         seed: int = 42,
+        list_modalities: bool = False,
     ) -> None:
-        cmd_inspect(adapter=adapter, data_root=data_root, seed=seed)
+        cmd_inspect(adapter=adapter, data_root=data_root, seed=seed, list_modalities=list_modalities)
 
     @app.command("prepare")
     def prepare(
@@ -253,6 +348,48 @@ if HAS_TYPER:
             output_dir=output_dir,
         )
 
+    @app.command("event-train")
+    def event_train(
+        config: str,
+        data_root: str = "data/raw/xrfv2",
+        adapter: str = "dummy",
+        seed: int = 42,
+        runs_dir: str = "runs",
+        profile: str | None = None,
+        override: list[str] | None = None,
+    ) -> None:
+        cmd_event_train(
+            config=config,
+            data_root=data_root,
+            adapter=adapter,
+            seed=seed,
+            runs_dir=runs_dir,
+            profile=profile,
+            overrides=override or [],
+        )
+
+    @app.command("event-eval")
+    def event_evaluate(
+        checkpoint: str,
+        config: str,
+        data_root: str = "data/raw/xrfv2",
+        adapter: str = "dummy",
+        seed: int = 42,
+        output_dir: str = "runs",
+        profile: str | None = None,
+        override: list[str] | None = None,
+    ) -> None:
+        cmd_event_eval(
+            checkpoint=checkpoint,
+            config=config,
+            data_root=data_root,
+            adapter=adapter,
+            seed=seed,
+            output_dir=output_dir,
+            profile=profile,
+            overrides=override or [],
+        )
+
     @app.command("benchmark")
     def benchmark(
         checkpoint: str,
@@ -285,6 +422,7 @@ else:
         p_inspect.add_argument("--adapter", default="dummy", choices=["dummy", "xrfv2"])
         p_inspect.add_argument("--data-root", default="data/raw/xrfv2")
         p_inspect.add_argument("--seed", type=int, default=42)
+        p_inspect.add_argument("--list-modalities", action="store_true")
 
         p_prepare = sub.add_parser("prepare")
         p_prepare.add_argument("--adapter", default="dummy", choices=["dummy", "xrfv2"])
@@ -309,6 +447,25 @@ else:
         p_eval.add_argument("--output-dir", default="runs")
         p_eval.add_argument("--override", action="append", default=[])
 
+        p_event_train = sub.add_parser("event-train")
+        p_event_train.add_argument("--config", required=True)
+        p_event_train.add_argument("--data-root", default="data/raw/xrfv2")
+        p_event_train.add_argument("--adapter", default="dummy", choices=["dummy", "xrfv2"])
+        p_event_train.add_argument("--seed", type=int, default=42)
+        p_event_train.add_argument("--runs-dir", default="runs")
+        p_event_train.add_argument("--profile", default=None)
+        p_event_train.add_argument("--override", action="append", default=[])
+
+        p_event_eval = sub.add_parser("event-eval")
+        p_event_eval.add_argument("--checkpoint", required=True)
+        p_event_eval.add_argument("--config", required=True)
+        p_event_eval.add_argument("--data-root", default="data/raw/xrfv2")
+        p_event_eval.add_argument("--adapter", default="dummy", choices=["dummy", "xrfv2"])
+        p_event_eval.add_argument("--seed", type=int, default=42)
+        p_event_eval.add_argument("--output-dir", default="runs")
+        p_event_eval.add_argument("--profile", default=None)
+        p_event_eval.add_argument("--override", action="append", default=[])
+
         p_bench = sub.add_parser("benchmark")
         p_bench.add_argument("--checkpoint", required=True)
         p_bench.add_argument("--config", required=True)
@@ -325,7 +482,12 @@ else:
         if args.command == "download":
             cmd_download(data_root=args.data_root, kaggle_dataset=args.kaggle_dataset)
         elif args.command == "inspect":
-            cmd_inspect(adapter=args.adapter, data_root=args.data_root, seed=args.seed)
+            cmd_inspect(
+                adapter=args.adapter,
+                data_root=args.data_root,
+                seed=args.seed,
+                list_modalities=bool(args.list_modalities),
+            )
         elif args.command == "prepare":
             cmd_prepare(adapter=args.adapter, data_root=args.data_root, output_dir=args.output_dir, seed=args.seed)
         elif args.command == "train":
@@ -346,6 +508,27 @@ else:
                 seed=args.seed,
                 overrides=args.override,
                 output_dir=args.output_dir,
+            )
+        elif args.command == "event-train":
+            cmd_event_train(
+                config=args.config,
+                data_root=args.data_root,
+                adapter=args.adapter,
+                seed=args.seed,
+                runs_dir=args.runs_dir,
+                profile=args.profile,
+                overrides=args.override,
+            )
+        elif args.command == "event-eval":
+            cmd_event_eval(
+                checkpoint=args.checkpoint,
+                config=args.config,
+                data_root=args.data_root,
+                adapter=args.adapter,
+                seed=args.seed,
+                output_dir=args.output_dir,
+                profile=args.profile,
+                overrides=args.override,
             )
         elif args.command == "benchmark":
             cmd_benchmark(checkpoint=args.checkpoint, config=args.config, seed=args.seed, output_dir=args.output_dir)
