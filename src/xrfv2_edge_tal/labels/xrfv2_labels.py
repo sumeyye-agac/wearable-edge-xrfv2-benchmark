@@ -3,16 +3,23 @@
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 from typing import Any
 
 import numpy as np
 
 _LABEL_KEYS = ["labels", "label_map", "actions", "action_map", "id2label", "label2id"]
+_SEGMENT_INFO_KEYS = ["id2action", "action_map", "label_map", "id2label", "label2id"]
 
 
 def _normalize_text(text: str) -> str:
-    return " ".join(str(text).strip().lower().split())
+    lowered = str(text).strip().lower()
+    lowered = re.sub(r"[^a-z0-9 ]+", " ", lowered)
+    lowered = lowered.replace("answering", "answer")
+    lowered = lowered.replace("using", "use")
+    tokens = [tok for tok in lowered.split() if tok not in {"the", "a", "an"}]
+    return " ".join(tokens)
 
 
 def _parse_mapping(payload: Any) -> dict[int, str]:
@@ -83,6 +90,12 @@ def resolve_positive_label_ids(
     keys_found = [key for key in _LABEL_KEYS if key in info]
     for key in keys_found:
         extracted.update(_parse_mapping(info[key]))
+    segment_info = info.get("segment_info")
+    if isinstance(segment_info, dict):
+        for key in _SEGMENT_INFO_KEYS:
+            if key in segment_info:
+                keys_found.append(f"segment_info.{key}")
+                extracted.update(_parse_mapping(segment_info[key]))
 
     wanted = {_normalize_text(name) for name in positive_action_names}
     resolved = {

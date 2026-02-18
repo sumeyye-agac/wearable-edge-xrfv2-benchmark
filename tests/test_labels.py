@@ -17,6 +17,18 @@ from xrfv2_edge_tal.labels.xrfv2_labels import build_binary_frame_labels, resolv
         ({"actions": {"Background": 0, "Answer the phone": 7, "Use phone": 9}}, {7, 9}),
         (
             {
+                "segment_info": {
+                    "id2action": {
+                        "0": "Background",
+                        "16": "Answering Phone",
+                        "21": "Using Phone",
+                    }
+                }
+            },
+            {16, 21},
+        ),
+        (
+            {
                 "id2label": {
                     "0": {"name": "Background"},
                     "3": {"name": "Answer the phone"},

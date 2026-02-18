@@ -105,6 +105,11 @@ def train_event_main(
     lr = float(train_cfg.get("lr", 1e-3))
     modality_dropout_p = float(train_cfg.get("modality_dropout_p", 0.1))
     max_train_samples = int(train_cfg.get("max_train_samples", 0))
+    background_label = int(train_cfg.get("background_label", 0))
+    loss_cfg = train_cfg.get("loss", {})
+    focal_gamma = float(loss_cfg.get("focal_gamma", 0.0))
+    background_weight = float(loss_cfg.get("background_weight", 1.0))
+    class_balance = bool(loss_cfg.get("class_balance", False))
 
     profile_name = _resolve_profile_name(config=config, profile=profile)
     adapter = _adapter_from_name(adapter_name=adapter_name, data_root=data_root, seed=seed)
@@ -154,6 +159,10 @@ def train_event_main(
                 target=target,
                 lr=lr,
                 modality_dropout_p=modality_dropout_p,
+                focal_gamma=focal_gamma,
+                background_label=background_label,
+                background_weight=background_weight,
+                class_balance=class_balance,
             )
             losses.append(float(loss))
             total_steps += 1
@@ -201,6 +210,11 @@ def train_event_main(
             "final_loss": history[-1]["loss"] if history else 0.0,
             "num_train_samples": len(train_ids),
             "total_steps": total_steps,
+            "loss": {
+                "focal_gamma": focal_gamma,
+                "background_weight": background_weight,
+                "class_balance": class_balance,
+            },
         },
         "labels": {
             "positive_label_ids": sorted(int(x) for x in positive_ids),
