@@ -14,9 +14,15 @@ import numpy as np
 from xrfv2_edge_tal.artifacts import create_run_dir, write_metrics
 from xrfv2_edge_tal.checkpoint import load_checkpoint
 from xrfv2_edge_tal.data.adapters import DummyAdapter, XRFV2H5Adapter
+from xrfv2_edge_tal.event.candidates import (
+    default_candidate_config,
+    detect_candidates,
+    motion_energy_from_glasses,
+    widen_window,
+)
 from xrfv2_edge_tal.event.metrics import compute_event_metrics
 from xrfv2_edge_tal.event.preprocess import normalization_config, normalize_modalities
-from xrfv2_edge_tal.event.trigger import frame_probs_to_event_triggers
+from xrfv2_edge_tal.event.trigger import filter_trigger_candidates, frame_probs_to_event_triggers
 from xrfv2_edge_tal.labels.xrfv2_labels import resolve_positive_label_ids
 from xrfv2_edge_tal.modalities import resolve_modalities_to_raw_keys
 from xrfv2_edge_tal.models.factory import build_model
@@ -88,6 +94,23 @@ def _resolve_label_source_modality(config: dict[str, Any]) -> str:
     return source or "imu"
 
 
+def _resolve_event_mode(config: dict[str, Any]) -> str:
+    eval_cfg = config.get("eval", {})
+    train_cfg = config.get("train", {})
+    mode = str(eval_cfg.get("event_mode", train_cfg.get("event_mode", "flat"))).strip().lower()
+    if mode not in {"flat", "hierarchical"}:
+        raise ValueError(f"Unsupported eval.event_mode={mode}. Expected flat|hierarchical.")
+    return mode
+
+
+def _resolve_hierarchical_cfg(config: dict[str, Any]) -> dict[str, float | int]:
+    eval_cfg = config.get("eval", {})
+    raw = eval_cfg.get("hierarchical", {})
+    if not isinstance(raw, dict):
+        raw = {}
+    return default_candidate_config(raw)
+
+
 def _segments_for_sample(
     adapter: DummyAdapter | XRFV2H5Adapter,
     sample_id: str,
@@ -149,6 +172,84 @@ def _count_params(state: dict[str, Any]) -> int:
     return total
 
 
+def _window_frames(window_len_s: float, frame_time_s: float) -> int:
+    raw = int(np.round(max(0.1, float(window_len_s)) / max(frame_time_s, 1e-9)))
+    return int(np.clip(raw, 16, 512))
+
+
+def _slice_or_pad_window(arr: np.ndarray, start: int, end: int, target_len: int) -> np.ndarray:
+    clip_start = max(0, int(start))
+    clip_end = min(int(arr.shape[0]), int(end))
+    if clip_end <= clip_start:
+        clip_end = min(int(arr.shape[0]), clip_start + 1)
+    part = arr[clip_start:clip_end]
+    if part.shape[0] == target_len:
+        return part.astype(np.float32, copy=False)
+    if part.shape[0] > target_len:
+        return part[:target_len].astype(np.float32, copy=False)
+    pad_rows = target_len - part.shape[0]
+    if part.shape[0] == 0:
+        base = np.zeros((1, arr.shape[1]), dtype=np.float32)
+    else:
+        base = part[-1:, :].astype(np.float32, copy=False)
+    pad = np.repeat(base, pad_rows, axis=0)
+    return np.concatenate([part.astype(np.float32, copy=False), pad], axis=0)
+
+
+def _fixed_window(start: int, end: int, seq_len: int, w_frames: int) -> tuple[int, int]:
+    center = int((start + end) // 2)
+    out_start = center - (w_frames // 2)
+    out_end = out_start + w_frames
+    if out_start < 0:
+        out_end += -out_start
+        out_start = 0
+    if out_end > seq_len:
+        shift = out_end - seq_len
+        out_start = max(0, out_start - shift)
+        out_end = seq_len
+    if out_end - out_start < w_frames:
+        out_start = max(0, out_end - w_frames)
+    return int(out_start), int(min(seq_len, out_start + w_frames))
+
+
+def _hierarchical_candidates(
+    x_profile: dict[str, np.ndarray],
+    frame_time_s: float,
+    hierarchical_cfg: dict[str, float | int],
+) -> list[tuple[int, int]]:
+    if "imu_gl" not in x_profile:
+        return []
+    seq_len = int(x_profile["imu_gl"].shape[0])
+    if seq_len <= 0:
+        return []
+    energy = motion_energy_from_glasses(x_profile["imu_gl"])
+    raw = detect_candidates(
+        energy=energy,
+        thr=float(hierarchical_cfg["energy_threshold"]),
+        min_active_s=float(hierarchical_cfg["min_active_s"]),
+        cooldown_s=float(hierarchical_cfg["cooldown_s"]),
+        frame_time_s=frame_time_s,
+    )
+    w_frames = _window_frames(float(hierarchical_cfg["window_len_s"]), frame_time_s)
+    out: list[tuple[int, int]] = []
+    seen: set[int] = set()
+    for start, end in raw:
+        s, e = widen_window(
+            start=start,
+            end=end,
+            pre_s=float(hierarchical_cfg["pre_s"]),
+            post_s=float(hierarchical_cfg["post_s"]),
+            t_frames=seq_len,
+            frame_time_s=frame_time_s,
+        )
+        ws, we = _fixed_window(s, e, seq_len=seq_len, w_frames=w_frames)
+        if ws not in seen:
+            out.append((ws, we))
+            seen.add(ws)
+    max_windows = max(1, int(hierarchical_cfg["max_windows"]))
+    return out[:max_windows]
+
+
 def _latency_stats(
     model: Any,
     x_dict: dict[str, np.ndarray],
@@ -178,6 +279,8 @@ def _evaluate_profile(
     config: dict[str, Any],
     positive_ids: set[int],
     source_modality: str,
+    event_mode: str,
+    hierarchical_cfg: dict[str, float | int],
     norm_enabled: bool,
     norm_clip: float | None,
 ) -> tuple[dict[str, Any], list[dict[str, Any]], list[dict[str, Any]], float]:
@@ -215,22 +318,55 @@ def _evaluate_profile(
         x_sel = _select_modalities_for_profile(x, config=config, profile_name=profile_name)
         x_sel = normalize_modalities(x_sel, enabled=norm_enabled, clip=norm_clip)
         seq_len = int(next(iter(x_sel.values())).shape[0])
+        if event_mode == "flat":
+            probs = model.predict_proba(x_sel)
+            if probs.ndim != 2 or probs.shape[1] < 2:
+                raise ValueError(f"Expected model output [T,2+] for event task, got {probs.shape}")
+            pos_probs = probs[:, 1]
+            triggers = frame_probs_to_event_triggers(
+                probs=pos_probs,
+                frame_time_s=frame_time_s,
+                threshold=threshold,
+                smoothing_window=smoothing_window,
+                cooldown_s=cooldown_s,
+                hysteresis=hysteresis,
+                threshold_off=float(threshold_off) if threshold_off is not None else None,
+                min_active_s=min_active_s,
+            )
+        else:
+            candidates = _hierarchical_candidates(
+                x_profile=x_sel,
+                frame_time_s=frame_time_s,
+                hierarchical_cfg=hierarchical_cfg,
+            )
+            w_frames = _window_frames(float(hierarchical_cfg["window_len_s"]), frame_time_s)
+            scored: list[dict[str, float | int]] = []
+            for start_frame, end_frame in candidates:
+                x_window = {
+                    key: _slice_or_pad_window(arr, start_frame, end_frame, w_frames)
+                    for key, arr in x_sel.items()
+                }
+                probs = model.predict_proba(x_window)
+                if probs.ndim != 2 or probs.shape[1] < 2:
+                    raise ValueError(
+                        f"Expected model output [W,2+] for event task, got {probs.shape}"
+                    )
+                score = float(np.mean(probs[:, 1]))
+                scored.append(
+                    {
+                        "time": float(start_frame * frame_time_s),
+                        "score": score,
+                        "frame": int(start_frame),
+                    }
+                )
+            triggers = filter_trigger_candidates(
+                candidates=scored,
+                threshold=threshold,
+                cooldown_s=cooldown_s,
+                hysteresis=hysteresis,
+                threshold_off=float(threshold_off) if threshold_off is not None else None,
+            )
 
-        probs = model.predict_proba(x_sel)
-        if probs.ndim != 2 or probs.shape[1] < 2:
-            raise ValueError(f"Expected model output [T,2+] for event task, got {probs.shape}")
-        pos_probs = probs[:, 1]
-
-        triggers = frame_probs_to_event_triggers(
-            probs=pos_probs,
-            frame_time_s=frame_time_s,
-            threshold=threshold,
-            smoothing_window=smoothing_window,
-            cooldown_s=cooldown_s,
-            hysteresis=hysteresis,
-            threshold_off=float(threshold_off) if threshold_off is not None else None,
-            min_active_s=min_active_s,
-        )
         for item in triggers:
             predictions.append(
                 {
@@ -282,10 +418,14 @@ def _profile_note(profile_name: str) -> str:
 
 
 def _render_profile_report(
-    profile_metrics: OrderedDict[str, dict[str, Any]], config: dict[str, Any]
+    profile_metrics: OrderedDict[str, dict[str, Any]],
+    config: dict[str, Any],
+    event_mode: str,
 ) -> str:
     lines = [
         "# Event Profile Report",
+        "",
+        f"- Event mode: `{event_mode}`",
         "",
         "| Profile | Sensors | Onset F1 | Within F1 | Onset FP/hour | Within FP/hour | p90 onset delay (s) | Notes |",
         "|---|---|---:|---:|---:|---:|---:|---|",
@@ -344,6 +484,8 @@ def eval_event_main(
         config=config, adapter_name=adapter_name, data_root=data_root
     )
     source_modality = _resolve_label_source_modality(config)
+    event_mode = _resolve_event_mode(config)
+    hierarchical_cfg = _resolve_hierarchical_cfg(config)
     norm_enabled, norm_clip = normalization_config(data_cfg)
 
     split = str(eval_cfg.get("split", "test"))
@@ -367,6 +509,8 @@ def eval_event_main(
             config=config,
             positive_ids=positive_ids,
             source_modality=source_modality,
+            event_mode=event_mode,
+            hierarchical_cfg=hierarchical_cfg,
             norm_enabled=norm_enabled,
             norm_clip=norm_clip,
         )
@@ -376,6 +520,22 @@ def eval_event_main(
             sample_x, config=config, profile_name=profile_name
         )
         sample_x_sel = normalize_modalities(sample_x_sel, enabled=norm_enabled, clip=norm_clip)
+        if event_mode == "hierarchical":
+            candidates = _hierarchical_candidates(
+                x_profile=sample_x_sel,
+                frame_time_s=float(eval_cfg.get("frame_time_s", 0.02)),
+                hierarchical_cfg=hierarchical_cfg,
+            )
+            if candidates:
+                w_frames = _window_frames(
+                    float(hierarchical_cfg["window_len_s"]),
+                    float(eval_cfg.get("frame_time_s", 0.02)),
+                )
+                start_frame, end_frame = candidates[0]
+                sample_x_sel = {
+                    key: _slice_or_pad_window(arr, start_frame, end_frame, w_frames)
+                    for key, arr in sample_x_sel.items()
+                }
         latency = _latency_stats(model=model, x_dict=sample_x_sel, warmup=warmup, iters=iters)
 
         metrics["edge"] = {
@@ -391,13 +551,18 @@ def eval_event_main(
         all_ground_truth.extend({**row, "profile": profile_name} for row in ground_truth)
 
     primary = selected_profiles[0]
-    report_md = _render_profile_report(profile_metrics=profile_metrics, config=config)
+    report_md = _render_profile_report(
+        profile_metrics=profile_metrics,
+        config=config,
+        event_mode=event_mode,
+    )
 
     run_dir = create_run_dir(
         base_dir=output_dir, config_dict=config, command_str="xrfv2-edge-tal event-eval"
     )
     payload = {
         "task": "phone_interaction_event",
+        "event_mode": event_mode,
         "profile": primary,
         "profiles": selected_profiles,
         "event_metrics": profile_metrics[primary],
@@ -410,6 +575,7 @@ def eval_event_main(
             "enabled": norm_enabled,
             "clip": norm_clip,
         },
+        "hierarchical": hierarchical_cfg if event_mode == "hierarchical" else {},
     }
     write_metrics(run_dir, payload)
     (run_dir / "profile_metrics.json").write_text(

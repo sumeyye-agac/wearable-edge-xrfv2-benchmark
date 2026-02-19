@@ -14,7 +14,9 @@ from xrfv2_edge_tal.artifacts import create_run_dir, write_metrics
 from xrfv2_edge_tal.checkpoint import load_checkpoint, save_checkpoint
 from xrfv2_edge_tal.data.adapters import DummyAdapter, XRFV2H5Adapter
 from xrfv2_edge_tal.data.prepare import compute_dataset_fingerprint
+from xrfv2_edge_tal.event.candidates import default_candidate_config
 from xrfv2_edge_tal.event.preprocess import normalization_config, normalize_modalities
+from xrfv2_edge_tal.event.window_dataset import build_windows_for_sample
 from xrfv2_edge_tal.labels.xrfv2_labels import build_binary_frame_labels, resolve_positive_label_ids
 from xrfv2_edge_tal.modalities import resolve_modalities_to_raw_keys
 from xrfv2_edge_tal.models.factory import build_model
@@ -102,6 +104,42 @@ def _resolve_label_source_modality(config: dict[str, Any]) -> str:
     return source or "imu"
 
 
+def _resolve_event_mode(config: dict[str, Any]) -> str:
+    train_cfg = config.get("train", {})
+    eval_cfg = config.get("eval", {})
+    mode = str(train_cfg.get("event_mode", eval_cfg.get("event_mode", "flat"))).strip().lower()
+    if mode not in {"flat", "hierarchical"}:
+        raise ValueError(f"Unsupported train.event_mode={mode}. Expected flat|hierarchical.")
+    return mode
+
+
+def _resolve_hierarchical_cfg(config: dict[str, Any]) -> dict[str, Any]:
+    train_cfg = config.get("train", {})
+    raw = train_cfg.get("hierarchical", {})
+    if not isinstance(raw, dict):
+        raw = {}
+    return default_candidate_config(raw)
+
+
+def _slice_or_pad_window(arr: np.ndarray, start: int, end: int, target_len: int) -> np.ndarray:
+    clip_start = max(0, int(start))
+    clip_end = min(int(arr.shape[0]), int(end))
+    if clip_end <= clip_start:
+        clip_end = min(int(arr.shape[0]), clip_start + 1)
+    part = arr[clip_start:clip_end]
+    if part.shape[0] == target_len:
+        return part.astype(np.float32, copy=False)
+    if part.shape[0] > target_len:
+        return part[:target_len].astype(np.float32, copy=False)
+    pad_rows = target_len - part.shape[0]
+    if part.shape[0] == 0:
+        base = np.zeros((1, arr.shape[1]), dtype=np.float32)
+    else:
+        base = part[-1:, :].astype(np.float32, copy=False)
+    pad = np.repeat(base, pad_rows, axis=0)
+    return np.concatenate([part.astype(np.float32, copy=False), pad], axis=0)
+
+
 def _segments_for_sample(
     adapter: DummyAdapter | XRFV2H5Adapter,
     sample_id: str,
@@ -160,6 +198,10 @@ def train_event_main(
     model_cfg = config.get("model", {})
     runtime_cfg = config.get("runtime", {})
     data_cfg = config.get("data", {})
+    event_mode = _resolve_event_mode(config)
+    hierarchical_cfg = _resolve_hierarchical_cfg(config)
+    frame_time_s = float(config.get("eval", {}).get("frame_time_s", 0.02))
+    window_len_s = float(hierarchical_cfg.get("window_len_s", 1.5))
 
     epochs = int(train_cfg.get("epochs", 3))
     lr = float(train_cfg.get("lr", 1e-3))
@@ -224,6 +266,8 @@ def train_event_main(
 
     history: list[dict[str, float | int]] = []
     total_steps = 0
+    total_windows = 0
+    total_positive_windows = 0
     for epoch in range(1, epochs + 1):
         t0 = time.perf_counter()
         losses: list[float] = []
@@ -237,42 +281,99 @@ def train_event_main(
                 source_modality=source_modality,
             )
             x_sel = _select_modalities_for_profile(x, config=config, profile_name=profile_name)
-            x_sel = normalize_modalities(
-                x_sel,
-                enabled=norm_enabled,
-                clip=norm_clip,
-            )
-            seq_len = int(next(iter(x_sel.values())).shape[0])
-            target = build_binary_frame_labels(
-                segments=segments,
-                seq_len=seq_len,
-                positive_label_ids=positive_ids,
-            )
-            teacher_probs = None
-            if teacher_model is not None and teacher_modalities:
-                x_teacher = _select_modalities_by_names(x, teacher_modalities)
-                if x_teacher:
-                    x_teacher = normalize_modalities(
-                        x_teacher,
-                        enabled=norm_enabled,
-                        clip=norm_clip,
-                    )
-                    teacher_probs = teacher_model.predict_proba(x_teacher)
-            loss = model.train_step(
+            x_sel = normalize_modalities(x_sel, enabled=norm_enabled, clip=norm_clip)
+
+            if event_mode == "flat":
+                seq_len = int(next(iter(x_sel.values())).shape[0])
+                target = build_binary_frame_labels(
+                    segments=segments,
+                    seq_len=seq_len,
+                    positive_label_ids=positive_ids,
+                )
+                teacher_probs = None
+                if teacher_model is not None and teacher_modalities:
+                    x_teacher = _select_modalities_by_names(x, teacher_modalities)
+                    if x_teacher:
+                        x_teacher = normalize_modalities(
+                            x_teacher,
+                            enabled=norm_enabled,
+                            clip=norm_clip,
+                        )
+                        teacher_probs = teacher_model.predict_proba(x_teacher)
+                loss = model.train_step(
+                    x_dict=x_sel,
+                    target=target,
+                    lr=lr,
+                    modality_dropout_p=modality_dropout_p,
+                    teacher_probs=teacher_probs,
+                    distill_weight=distill_weight if teacher_probs is not None else 0.0,
+                    temperature=distill_temperature,
+                    focal_gamma=focal_gamma,
+                    background_label=background_label,
+                    background_weight=background_weight,
+                    class_balance=class_balance,
+                )
+                losses.append(float(loss))
+                total_steps += 1
+                continue
+
+            windows = build_windows_for_sample(
                 x_dict=x_sel,
-                target=target,
-                lr=lr,
-                modality_dropout_p=modality_dropout_p,
-                teacher_probs=teacher_probs,
-                distill_weight=distill_weight if teacher_probs is not None else 0.0,
-                temperature=distill_temperature,
-                focal_gamma=focal_gamma,
-                background_label=background_label,
-                background_weight=background_weight,
-                class_balance=class_balance,
+                segments=segments,
+                positive_ids=positive_ids,
+                profile_modalities=sorted(list(x_sel.keys())),
+                frame_time_s=frame_time_s,
+                candidate_cfg=hierarchical_cfg,
+                window_len_s=window_len_s,
+                sample_id=sample_id,
             )
-            losses.append(float(loss))
-            total_steps += 1
+            total_windows += len(windows)
+            total_positive_windows += int(sum(int(w["y"]) for w in windows))
+            for window in windows:
+                x_win = normalize_modalities(
+                    dict(window["x_window"]),
+                    enabled=norm_enabled,
+                    clip=norm_clip,
+                )
+                win_len = int(next(iter(x_win.values())).shape[0])
+                label = int(window["y"])
+                target = np.full((win_len,), label, dtype=np.int64)
+
+                teacher_probs = None
+                if teacher_model is not None and teacher_modalities:
+                    x_teacher_full = _select_modalities_by_names(x, teacher_modalities)
+                    if x_teacher_full:
+                        x_teacher_window = {
+                            key: _slice_or_pad_window(
+                                np.asarray(arr, dtype=np.float32),
+                                start=int(window["start_frame"]),
+                                end=int(window["end_frame"]),
+                                target_len=win_len,
+                            )
+                            for key, arr in x_teacher_full.items()
+                        }
+                        x_teacher_window = normalize_modalities(
+                            x_teacher_window,
+                            enabled=norm_enabled,
+                            clip=norm_clip,
+                        )
+                        teacher_probs = teacher_model.predict_proba(x_teacher_window)
+
+                loss = model.train_step(
+                    x_dict=x_win,
+                    target=target,
+                    lr=lr,
+                    modality_dropout_p=modality_dropout_p,
+                    teacher_probs=teacher_probs,
+                    distill_weight=distill_weight if teacher_probs is not None else 0.0,
+                    temperature=distill_temperature,
+                    focal_gamma=focal_gamma,
+                    background_label=background_label,
+                    background_weight=background_weight,
+                    class_balance=class_balance,
+                )
+                losses.append(float(loss))
+                total_steps += 1
 
         epoch_s = float(time.perf_counter() - t0)
         history.append(
@@ -286,6 +387,7 @@ def train_event_main(
 
     metadata = {
         "task": "phone_interaction_event",
+        "event_mode": event_mode,
         "model_name": model_name,
         "input_dims": input_dims,
         "num_classes": 2,
@@ -313,6 +415,7 @@ def train_event_main(
 
     metrics = {
         "task": "phone_interaction_event",
+        "event_mode": event_mode,
         "profile": profile_name,
         "train": {
             "epochs": epochs,
@@ -320,6 +423,14 @@ def train_event_main(
             "final_loss": history[-1]["loss"] if history else 0.0,
             "num_train_samples": len(train_ids),
             "total_steps": total_steps,
+            "hierarchical": {
+                "window_len_s": window_len_s,
+                "candidate_cfg": hierarchical_cfg,
+                "num_windows": int(total_windows),
+                "num_positive_windows": int(total_positive_windows),
+            }
+            if event_mode == "hierarchical"
+            else {},
             "loss": {
                 "focal_gamma": focal_gamma,
                 "background_weight": background_weight,

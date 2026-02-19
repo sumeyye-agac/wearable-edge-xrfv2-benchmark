@@ -109,7 +109,47 @@ def frame_probs_to_event_triggers(
     return triggers
 
 
+def filter_trigger_candidates(
+    candidates: list[dict[str, float | int]],
+    threshold: float,
+    cooldown_s: float,
+    hysteresis: bool = False,
+    threshold_off: float | None = None,
+) -> list[dict[str, float | int]]:
+    """Filter candidate trigger points by score threshold and cooldown."""
+    if not candidates:
+        return []
+    ordered = sorted(candidates, key=lambda x: float(x["time"]))
+    off = float(threshold_off if threshold_off is not None else threshold * 0.7)
+    if off > threshold:
+        raise ValueError("threshold_off must be <= threshold when hysteresis is enabled")
+
+    out: list[dict[str, float | int]] = []
+    last_time = -1e18
+    active = False
+    for item in ordered:
+        score = float(item["score"])
+        ts = float(item["time"])
+        if hysteresis:
+            if active and score <= off:
+                active = False
+            if (not active) and score >= threshold:
+                if ts - last_time >= max(0.0, cooldown_s):
+                    out.append(item)
+                    last_time = ts
+                    active = True
+        else:
+            if score < threshold:
+                continue
+            if ts - last_time < max(0.0, cooldown_s):
+                continue
+            out.append(item)
+            last_time = ts
+    return out
+
+
 __all__ = [
+    "filter_trigger_candidates",
     "frame_probs_to_event_triggers",
     "smooth_1d",
     "threshold_with_hysteresis",

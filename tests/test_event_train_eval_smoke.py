@@ -31,16 +31,40 @@ def _event_config() -> dict:
             "device": "cpu",
         },
         "train": {
+            "event_mode": "flat",
             "epochs": 1,
             "lr": 0.01,
             "modality_dropout_p": 0.05,
             "max_train_samples": 4,
+            "hierarchical": {
+                "energy_threshold": 0.4,
+                "min_active_s": 0.1,
+                "cooldown_s": 0.1,
+                "pre_s": 0.1,
+                "post_s": 0.1,
+                "window_len_s": 1.0,
+                "overlap_min_s": 0.1,
+                "max_windows": 8,
+                "include_gt_windows": True,
+            },
         },
         "eval": {
+            "event_mode": "flat",
             "split": "test",
             "max_eval_samples": 3,
             "frame_time_s": 0.02,
             "onset_tolerance_s": 0.4,
+            "hierarchical": {
+                "energy_threshold": 0.4,
+                "min_active_s": 0.1,
+                "cooldown_s": 0.1,
+                "pre_s": 0.1,
+                "post_s": 0.1,
+                "window_len_s": 1.0,
+                "overlap_min_s": 0.1,
+                "max_windows": 8,
+                "include_gt_windows": False,
+            },
             "trigger": {
                 "threshold": 0.5,
                 "smoothing_window": 3,
@@ -158,3 +182,33 @@ def test_event_eval_uses_checkpoint_tcn_shape_over_config(tmp_path: Path) -> Non
     )
     metrics = json.loads((eval_run / "metrics.json").read_text(encoding="utf-8"))
     assert "profile_metrics" in metrics
+
+
+def test_event_train_eval_hierarchical_smoke(tmp_path: Path) -> None:
+    cfg = _event_config()
+    cfg["train"]["event_mode"] = "hierarchical"
+    cfg["eval"]["event_mode"] = "hierarchical"
+
+    train_run = train_event_main(
+        config=cfg,
+        data_root=str(tmp_path / "raw"),
+        adapter_name="dummy",
+        seed=31,
+        runs_dir=str(tmp_path / "runs"),
+        profile="earbuds_glasses",
+    )
+    ckpt = train_run / "checkpoints" / "last.npz"
+    assert ckpt.exists()
+
+    eval_run = eval_event_main(
+        checkpoint=str(ckpt),
+        config=cfg,
+        data_root=str(tmp_path / "raw"),
+        adapter_name="dummy",
+        seed=31,
+        output_dir=str(tmp_path / "runs"),
+        profile="earbuds_glasses",
+        profiles=["earbuds_glasses", "glasses_only"],
+    )
+    metrics = json.loads((eval_run / "metrics.json").read_text(encoding="utf-8"))
+    assert metrics["event_mode"] == "hierarchical"

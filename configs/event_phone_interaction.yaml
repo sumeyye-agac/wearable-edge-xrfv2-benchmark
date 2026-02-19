@@ -28,10 +28,26 @@ runtime:
   device: auto
 
 train:
+  event_mode: flat
   epochs: 3
   lr: 0.001
   modality_dropout_p: 0.1
   background_label: 0
+  hierarchical:
+    energy_threshold: 1.0
+    min_active_s: 0.20
+    cooldown_s: 0.50
+    pre_s: 0.20
+    post_s: 0.40
+    window_len_s: 1.50
+    overlap_min_s: 0.20
+    max_windows: 24
+    include_gt_windows: true
+  hard_negative_mining:
+    enabled: false
+    subset_samples: 256
+    score_threshold: 0.6
+    weight: 2.0
   distillation:
     enabled: false
     teacher_checkpoint: ""
@@ -48,11 +64,22 @@ decode:
   min_gap: 1
 
 eval:
+  event_mode: flat
   split: test
   frame_time_s: 0.02
   onset_tolerance_s: 0.5
   benchmark_warmup: 5
   benchmark_iters: 20
+  hierarchical:
+    energy_threshold: 1.0
+    min_active_s: 0.20
+    cooldown_s: 0.50
+    pre_s: 0.20
+    post_s: 0.40
+    window_len_s: 1.50
+    overlap_min_s: 0.20
+    max_windows: 24
+    include_gt_windows: false
   trigger:
     threshold: 0.55
     smoothing_window: 5

@@ -3,7 +3,7 @@ from __future__ import annotations
 import numpy as np
 
 from xrfv2_edge_tal.event.metrics import compute_event_metrics
-from xrfv2_edge_tal.event.trigger import frame_probs_to_event_triggers
+from xrfv2_edge_tal.event.trigger import filter_trigger_candidates, frame_probs_to_event_triggers
 
 
 def test_trigger_cooldown_and_hysteresis() -> None:
@@ -74,3 +74,19 @@ def test_event_metrics_tp_fp_fn_and_delays() -> None:
     assert within["tp"] == 2
     assert within["fp"] == 1
     assert within["fn"] == 2
+
+
+def test_filter_trigger_candidates_threshold_and_cooldown() -> None:
+    candidates = [
+        {"time": 0.1, "score": 0.6, "frame": 5},
+        {"time": 0.3, "score": 0.9, "frame": 15},
+        {"time": 0.5, "score": 0.8, "frame": 25},
+    ]
+    kept = filter_trigger_candidates(
+        candidates=candidates,
+        threshold=0.7,
+        cooldown_s=0.25,
+        hysteresis=False,
+    )
+    assert len(kept) == 1
+    assert kept[0]["frame"] == 15

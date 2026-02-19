@@ -14,6 +14,9 @@ from xrfv2_edge_tal.artifacts import create_run_dir, write_metrics
 from xrfv2_edge_tal.checkpoint import load_checkpoint
 from xrfv2_edge_tal.event.eval_event import (
     _adapter_from_name,
+    _hierarchical_candidates,
+    _resolve_event_mode,
+    _resolve_hierarchical_cfg,
     _resolve_label_source_modality,
     _resolve_positive_ids,
     _resolve_profile_names,
@@ -22,10 +25,12 @@ from xrfv2_edge_tal.event.eval_event import (
     _segments_for_sample,
     _select_modalities_for_profile,
     _sequence_duration_seconds,
+    _slice_or_pad_window,
+    _window_frames,
 )
 from xrfv2_edge_tal.event.metrics import compute_event_metrics
 from xrfv2_edge_tal.event.preprocess import normalization_config, normalize_modalities
-from xrfv2_edge_tal.event.trigger import frame_probs_to_event_triggers
+from xrfv2_edge_tal.event.trigger import filter_trigger_candidates, frame_probs_to_event_triggers
 from xrfv2_edge_tal.models.factory import build_model
 
 
@@ -73,10 +78,12 @@ def _render_calibration_report(
     best_by_profile: OrderedDict[str, dict[str, Any]],
     metric_mode: str,
     fp_hour_budget: float | None,
+    event_mode: str,
 ) -> str:
     lines = [
         "# Event Calibration Report",
         "",
+        f"- Event mode: `{event_mode}`",
         f"- Metric mode: `{metric_mode}`",
         f"- FP/hour budget: `{fp_hour_budget}`"
         if fp_hour_budget is not None
@@ -143,6 +150,8 @@ def calibrate_event_main(
         config=config, adapter_name=adapter_name, data_root=data_root
     )
     source_modality = _resolve_label_source_modality(config)
+    event_mode = _resolve_event_mode(config)
+    hierarchical_cfg = _resolve_hierarchical_cfg(config)
     selected_profiles = _resolve_profile_names(config=config, profile=profile, profiles=profiles)
 
     frame_time_s = float(eval_cfg.get("frame_time_s", 0.02))
@@ -168,7 +177,7 @@ def calibrate_event_main(
         sample_ids = sample_ids[:max_eval_samples]
 
     for profile_name in selected_profiles:
-        cached_probs: list[tuple[str, np.ndarray, list[dict[str, Any]]]] = []
+        cached_streams: list[tuple[str, np.ndarray | list[dict[str, float | int]], int]] = []
         duration_s = 0.0
         ground_truth_flat: list[dict[str, Any]] = []
 
@@ -183,11 +192,7 @@ def calibrate_event_main(
             )
             x_sel = _select_modalities_for_profile(x, config=config, profile_name=profile_name)
             x_sel = normalize_modalities(x_sel, enabled=norm_enabled, clip=norm_clip)
-            probs = model.predict_proba(x_sel)
-            if probs.ndim != 2 or probs.shape[1] < 2:
-                raise ValueError(f"Expected model output [T,2+], got {probs.shape}")
-            pos_probs = probs[:, 1]
-            seq_len = int(pos_probs.shape[0])
+            seq_len = int(next(iter(x_sel.values())).shape[0])
 
             gt_segments: list[dict[str, Any]] = []
             for seg in segments:
@@ -203,7 +208,35 @@ def calibrate_event_main(
                 gt_segments.append(row)
                 ground_truth_flat.append(row)
 
-            cached_probs.append((sample_id, pos_probs, gt_segments))
+            if event_mode == "flat":
+                probs = model.predict_proba(x_sel)
+                if probs.ndim != 2 or probs.shape[1] < 2:
+                    raise ValueError(f"Expected model output [T,2+], got {probs.shape}")
+                cached_streams.append((sample_id, probs[:, 1], seq_len))
+            else:
+                candidates = _hierarchical_candidates(
+                    x_profile=x_sel,
+                    frame_time_s=frame_time_s,
+                    hierarchical_cfg=hierarchical_cfg,
+                )
+                w_frames = _window_frames(float(hierarchical_cfg["window_len_s"]), frame_time_s)
+                scored: list[dict[str, float | int]] = []
+                for start_frame, end_frame in candidates:
+                    x_window = {
+                        key: _slice_or_pad_window(arr, start_frame, end_frame, w_frames)
+                        for key, arr in x_sel.items()
+                    }
+                    probs = model.predict_proba(x_window)
+                    if probs.ndim != 2 or probs.shape[1] < 2:
+                        raise ValueError(f"Expected model output [W,2+], got {probs.shape}")
+                    scored.append(
+                        {
+                            "time": float(start_frame * frame_time_s),
+                            "score": float(np.mean(probs[:, 1])),
+                            "frame": int(start_frame),
+                        }
+                    )
+                cached_streams.append((sample_id, scored, seq_len))
             duration_s += _sequence_duration_seconds(
                 meta=meta, seq_len=seq_len, frame_time_s=frame_time_s
             )
@@ -217,17 +250,28 @@ def calibrate_event_main(
                     threshold_off = None
 
                 predictions: list[dict[str, Any]] = []
-                for sample_id, pos_probs, _ in cached_probs:
-                    triggers = frame_probs_to_event_triggers(
-                        probs=pos_probs,
-                        frame_time_s=frame_time_s,
-                        threshold=float(threshold),
-                        smoothing_window=smoothing_window,
-                        cooldown_s=float(cooldown_s),
-                        hysteresis=hysteresis,
-                        threshold_off=threshold_off,
-                        min_active_s=min_active_s,
-                    )
+                for sample_id, stream, _ in cached_streams:
+                    if event_mode == "flat":
+                        assert isinstance(stream, np.ndarray)
+                        triggers = frame_probs_to_event_triggers(
+                            probs=stream,
+                            frame_time_s=frame_time_s,
+                            threshold=float(threshold),
+                            smoothing_window=smoothing_window,
+                            cooldown_s=float(cooldown_s),
+                            hysteresis=hysteresis,
+                            threshold_off=threshold_off,
+                            min_active_s=min_active_s,
+                        )
+                    else:
+                        assert isinstance(stream, list)
+                        triggers = filter_trigger_candidates(
+                            candidates=stream,
+                            threshold=float(threshold),
+                            cooldown_s=float(cooldown_s),
+                            hysteresis=hysteresis,
+                            threshold_off=threshold_off,
+                        )
                     for trigger in triggers:
                         predictions.append(
                             {
@@ -274,10 +318,12 @@ def calibrate_event_main(
         best_by_profile=best_by_profile,
         metric_mode=metric_mode,
         fp_hour_budget=fp_hour_budget,
+        event_mode=event_mode,
     )
 
     payload = {
         "task": "phone_interaction_event",
+        "event_mode": event_mode,
         "calibration": {
             "metric_mode": metric_mode,
             "fp_hour_budget": fp_hour_budget,
@@ -286,6 +332,7 @@ def calibrate_event_main(
             "profiles": selected_profiles,
             "best_by_profile": best_by_profile,
             "source_modality": source_modality,
+            "hierarchical": hierarchical_cfg if event_mode == "hierarchical" else {},
         },
     }
     write_metrics(run_dir, payload)
