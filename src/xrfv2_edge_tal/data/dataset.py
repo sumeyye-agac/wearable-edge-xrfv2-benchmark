@@ -12,7 +12,9 @@ from xrfv2_edge_tal.data.adapters import RawAdapter, Segment
 class TALDataset:
     """Thin dataset wrapper for adapter + split."""
 
-    def __init__(self, adapter: RawAdapter, split: str, sample_ids: list[str] | None = None) -> None:
+    def __init__(
+        self, adapter: RawAdapter, split: str, sample_ids: list[str] | None = None
+    ) -> None:
         self.adapter = adapter
         self.split = split
         self.sample_ids = sample_ids if sample_ids is not None else adapter.split_ids(split)

@@ -79,7 +79,7 @@ def frame_probs_to_event_triggers(
 
     cooldown_frames = int(np.ceil(cooldown_s / frame_time_s))
     triggers: list[dict[str, Any]] = []
-    last_kept_frame = -10**9
+    last_kept_frame = -(10**9)
     for frame_idx in rising_edges:
         if frame_idx - last_kept_frame <= cooldown_frames:
             continue

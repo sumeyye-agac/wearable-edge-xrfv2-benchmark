@@ -26,7 +26,9 @@ class RawAdapter(ABC):
         raise NotImplementedError
 
     @abstractmethod
-    def get_sample(self, sample_id: str, split: str) -> tuple[dict[str, np.ndarray], list[Segment], dict[str, Any]]:
+    def get_sample(
+        self, sample_id: str, split: str
+    ) -> tuple[dict[str, np.ndarray], list[Segment], dict[str, Any]]:
         raise NotImplementedError
 
 
@@ -68,7 +70,9 @@ class DummyAdapter(RawAdapter):
                 "x": {},
             }
             for modality in self._modalities:
-                x = self._rng.normal(0.0, 0.2, size=(self._seq_len, self._feat_dim)).astype(np.float32)
+                x = self._rng.normal(0.0, 0.2, size=(self._seq_len, self._feat_dim)).astype(
+                    np.float32
+                )
                 for seg in segments:
                     start = int(seg["start"])
                     end = int(seg["end"])
@@ -93,7 +97,9 @@ class DummyAdapter(RawAdapter):
         self._require_split(split)
         return list(self._data[split].keys())
 
-    def get_sample(self, sample_id: str, split: str) -> tuple[dict[str, np.ndarray], list[Segment], dict[str, Any]]:
+    def get_sample(
+        self, sample_id: str, split: str
+    ) -> tuple[dict[str, np.ndarray], list[Segment], dict[str, Any]]:
         self._require_split(split)
         if sample_id not in self._data[split]:
             raise KeyError(f"Unknown sample_id={sample_id} for split={split}")
@@ -145,7 +151,9 @@ class XRFV2H5Adapter(RawAdapter):
         self._require_split(split)
         return [str(i) for i in range(self._counts[split])]
 
-    def get_sample(self, sample_id: str, split: str) -> tuple[dict[str, np.ndarray], list[Segment], dict[str, Any]]:
+    def get_sample(
+        self, sample_id: str, split: str
+    ) -> tuple[dict[str, np.ndarray], list[Segment], dict[str, Any]]:
         self._require_split(split)
         try:
             idx = int(sample_id)

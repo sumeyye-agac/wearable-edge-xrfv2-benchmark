@@ -75,24 +75,29 @@ def export_onnx_main(
             self.kernel_size = int(state.get("kernel_size", 5))
             self.tcn_layers = int(state.get("tcn_layers", 1))
 
-            self.cls_w = nn.Parameter(torch.tensor(state["cls_w"], dtype=torch.float32), requires_grad=False)
-            self.cls_b = nn.Parameter(torch.tensor(state["cls_b"], dtype=torch.float32), requires_grad=False)
+            self.cls_w = nn.Parameter(
+                torch.tensor(state["cls_w"], dtype=torch.float32), requires_grad=False
+            )
+            self.cls_b = nn.Parameter(
+                torch.tensor(state["cls_b"], dtype=torch.float32), requires_grad=False
+            )
 
             self.proj_w = nn.ParameterDict()
             self.proj_b = nn.ParameterDict()
             for modality in self.modalities:
                 self.proj_w[modality] = nn.Parameter(
-                    torch.tensor(state[f"proj_w::{modality}"], dtype=torch.float32), requires_grad=False
+                    torch.tensor(state[f"proj_w::{modality}"], dtype=torch.float32),
+                    requires_grad=False,
                 )
                 self.proj_b[modality] = nn.Parameter(
-                    torch.tensor(state[f"proj_b::{modality}"], dtype=torch.float32), requires_grad=False
+                    torch.tensor(state[f"proj_b::{modality}"], dtype=torch.float32),
+                    requires_grad=False,
                 )
 
             fusion = state.get("fusion", {}) if isinstance(state.get("fusion", {}), dict) else {}
             gate_logits = fusion.get("gate_logits", {}) if isinstance(fusion, dict) else {}
             self.gate_logits = {
-                modality: float(gate_logits.get(modality, 0.0))
-                for modality in self.modalities
+                modality: float(gate_logits.get(modality, 0.0)) for modality in self.modalities
             }
 
             self.dw_kernels = nn.ParameterDict()
@@ -107,9 +112,15 @@ def export_onnx_main(
                             )
 
             if self.model_name == "tiny_transformer":
-                self.wq = nn.Parameter(torch.tensor(state["wq"], dtype=torch.float32), requires_grad=False)
-                self.wk = nn.Parameter(torch.tensor(state["wk"], dtype=torch.float32), requires_grad=False)
-                self.wv = nn.Parameter(torch.tensor(state["wv"], dtype=torch.float32), requires_grad=False)
+                self.wq = nn.Parameter(
+                    torch.tensor(state["wq"], dtype=torch.float32), requires_grad=False
+                )
+                self.wk = nn.Parameter(
+                    torch.tensor(state["wk"], dtype=torch.float32), requires_grad=False
+                )
+                self.wv = nn.Parameter(
+                    torch.tensor(state["wv"], dtype=torch.float32), requires_grad=False
+                )
 
         def _moving_average(self, x: Any) -> Any:
             if self.kernel_size <= 1:
@@ -158,7 +169,10 @@ def export_onnx_main(
                 feat = self._encode_modality(inputs[idx], modality)
                 feats.append(feat)
                 energy = torch.mean(torch.abs(feat))
-                score_terms.append(torch.tensor(self.gate_logits[modality], dtype=feat.dtype, device=feat.device) + 0.05 * energy)
+                score_terms.append(
+                    torch.tensor(self.gate_logits[modality], dtype=feat.dtype, device=feat.device)
+                    + 0.05 * energy
+                )
 
             score_vec = torch.stack(score_terms)
             weights = torch.softmax(score_vec, dim=0)
@@ -212,8 +226,12 @@ def export_onnx_main(
     np_out = np_out[None, ...]
 
     if not np.allclose(ort_out, torch_out, atol=1e-4, rtol=1e-4):
-        raise RuntimeError("ONNX verification failed: ONNXRuntime output diverges from torch output")
+        raise RuntimeError(
+            "ONNX verification failed: ONNXRuntime output diverges from torch output"
+        )
     if not np.allclose(ort_out, np_out, atol=2e-3, rtol=2e-3):
-        raise RuntimeError("ONNX verification failed: ONNXRuntime output diverges from numpy checkpoint model")
+        raise RuntimeError(
+            "ONNX verification failed: ONNXRuntime output diverges from numpy checkpoint model"
+        )
 
     return out_path

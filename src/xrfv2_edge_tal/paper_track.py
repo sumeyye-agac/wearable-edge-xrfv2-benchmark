@@ -93,7 +93,9 @@ def window_starts(seq_len: int, clip_len: int, stride: int) -> list[int]:
     return starts
 
 
-def _slice_with_edge_pad(x: np.ndarray, start: int, clip_len: int, seq_len: int) -> tuple[np.ndarray, int]:
+def _slice_with_edge_pad(
+    x: np.ndarray, start: int, clip_len: int, seq_len: int
+) -> tuple[np.ndarray, int]:
     end = min(start + clip_len, seq_len)
     valid_len = max(0, end - start)
 
@@ -152,7 +154,9 @@ def make_windows(
         window_x: dict[str, np.ndarray] = {}
         valid_len = clip_len
         for modality, x in x_dict.items():
-            xw, this_valid = _slice_with_edge_pad(x, start=start, clip_len=clip_len, seq_len=seq_len)
+            xw, this_valid = _slice_with_edge_pad(
+                x, start=start, clip_len=clip_len, seq_len=seq_len
+            )
             window_x[modality] = xw
             valid_len = min(valid_len, this_valid)
         out.append(
@@ -213,4 +217,3 @@ def aggregate_window_probs(
 
     counts = np.maximum(counts, 1.0)
     return agg / counts
-

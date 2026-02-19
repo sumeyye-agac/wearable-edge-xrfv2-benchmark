@@ -35,7 +35,9 @@ def test_decode_modes_both_work() -> None:
     probs = rng.uniform(size=(20, 4)).astype(np.float32)
     probs = probs / np.sum(probs, axis=1, keepdims=True)
 
-    segs_a = decode_per_class_threshold(probs=probs, score_threshold=0.3, min_len=2, background_class=0)
+    segs_a = decode_per_class_threshold(
+        probs=probs, score_threshold=0.3, min_len=2, background_class=0
+    )
     segs_b = decode_argmax_probs(
         probs=probs,
         score_threshold=0.3,

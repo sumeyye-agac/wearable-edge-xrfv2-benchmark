@@ -169,10 +169,12 @@ def mask_channels_by_profile(
             f"channel_names length ({len(channel_names)}) must match x channels ({arr.shape[1]})"
         )
 
-    allowed = set(resolve_requested_modalities(
-        available_modalities=[name.split(":", 1)[0] for name in channel_names],
-        requested_modalities=include_modalities,
-    ))
+    allowed = set(
+        resolve_requested_modalities(
+            available_modalities=[name.split(":", 1)[0] for name in channel_names],
+            requested_modalities=include_modalities,
+        )
+    )
 
     keep_idx: list[int] = []
     new_names: list[str] = []
@@ -184,7 +186,9 @@ def mask_channels_by_profile(
             new_names.append(name)
 
     if not keep_idx:
-        available = sorted({normalize_modality_name(name.split(":", 1)[0]) for name in channel_names})
+        available = sorted(
+            {normalize_modality_name(name.split(":", 1)[0]) for name in channel_names}
+        )
         raise ValueError(
             "No channels matched requested profile modalities "
             f"{sorted(allowed)}. Available modalities from channels: {available}"

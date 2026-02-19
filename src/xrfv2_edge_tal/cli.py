@@ -146,7 +146,9 @@ def cmd_train(
 
     cfg = load_yaml_config(config)
     cfg = apply_cli_overrides(cfg, overrides)
-    run_dir = train_main(config=cfg, data_root=data_root, adapter_name=adapter, seed=seed, runs_dir=runs_dir)
+    run_dir = train_main(
+        config=cfg, data_root=data_root, adapter_name=adapter, seed=seed, runs_dir=runs_dir
+    )
     _echo(f"Training run dir: {run_dir}")
     _echo(f"Checkpoint: {run_dir / 'checkpoints' / 'last.npz'}")
 
@@ -189,9 +191,7 @@ def _apply_profile_modalities(cfg: dict[str, Any], profile: str | None) -> dict[
         )
     if selected_profile not in profiles:
         available = ", ".join(sorted(str(k) for k in profiles.keys()))
-        raise ValueError(
-            f"Unknown profile '{selected_profile}'. Available profiles: {available}"
-        )
+        raise ValueError(f"Unknown profile '{selected_profile}'. Available profiles: {available}")
 
     selected_modalities = profiles[selected_profile]
     if not isinstance(selected_modalities, list) or not all(
@@ -281,7 +281,9 @@ def cmd_export_onnx(checkpoint: str, config: str, output_path: str, seed: int) -
 
     cfg = load_yaml_config(config)
     try:
-        path = export_onnx_main(checkpoint=checkpoint, config=cfg, output_path=output_path, seed=seed)
+        path = export_onnx_main(
+            checkpoint=checkpoint, config=cfg, output_path=output_path, seed=seed
+        )
     except RuntimeError as exc:
         _echo(f"ONNX export failed: {exc}")
         return
@@ -305,7 +307,9 @@ if HAS_TYPER:
         seed: int = 42,
         list_modalities: bool = False,
     ) -> None:
-        cmd_inspect(adapter=adapter, data_root=data_root, seed=seed, list_modalities=list_modalities)
+        cmd_inspect(
+            adapter=adapter, data_root=data_root, seed=seed, list_modalities=list_modalities
+        )
 
     @app.command("prepare")
     def prepare(
@@ -498,7 +502,12 @@ else:
                 list_modalities=bool(args.list_modalities),
             )
         elif args.command == "prepare":
-            cmd_prepare(adapter=args.adapter, data_root=args.data_root, output_dir=args.output_dir, seed=args.seed)
+            cmd_prepare(
+                adapter=args.adapter,
+                data_root=args.data_root,
+                output_dir=args.output_dir,
+                seed=args.seed,
+            )
         elif args.command == "train":
             cmd_train(
                 config=args.config,
@@ -541,7 +550,12 @@ else:
                 overrides=args.override,
             )
         elif args.command == "benchmark":
-            cmd_benchmark(checkpoint=args.checkpoint, config=args.config, seed=args.seed, output_dir=args.output_dir)
+            cmd_benchmark(
+                checkpoint=args.checkpoint,
+                config=args.config,
+                seed=args.seed,
+                output_dir=args.output_dir,
+            )
         elif args.command == "export-onnx":
             cmd_export_onnx(
                 checkpoint=args.checkpoint,

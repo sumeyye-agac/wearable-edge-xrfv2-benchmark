@@ -30,7 +30,9 @@ def _set_seed(seed: int) -> None:
     np.random.seed(seed)
 
 
-def _adapter_from_name(adapter_name: str, data_root: str, seed: int) -> DummyAdapter | XRFV2H5Adapter:
+def _adapter_from_name(
+    adapter_name: str, data_root: str, seed: int
+) -> DummyAdapter | XRFV2H5Adapter:
     if adapter_name == "dummy":
         return DummyAdapter(seed=seed)
     if adapter_name == "xrfv2":
@@ -47,10 +49,14 @@ def _parse_modalities(value: Any) -> list[str] | None:
     if isinstance(value, list):
         items = [str(x).strip() for x in value if str(x).strip()]
         return items or None
-    raise ValueError(f"modalities must be list[str] or comma-separated string, got: {type(value)!r}")
+    raise ValueError(
+        f"modalities must be list[str] or comma-separated string, got: {type(value)!r}"
+    )
 
 
-def _select_modalities(x: dict[str, np.ndarray], selected: list[str] | None) -> dict[str, np.ndarray]:
+def _select_modalities(
+    x: dict[str, np.ndarray], selected: list[str] | None
+) -> dict[str, np.ndarray]:
     if not selected:
         return x
     selected_keys = resolve_modalities_to_raw_keys(
@@ -61,7 +67,9 @@ def _select_modalities(x: dict[str, np.ndarray], selected: list[str] | None) -> 
     if not out:
         available = ", ".join(sorted(x.keys()))
         wanted = ", ".join(selected)
-        raise ValueError(f"Requested modalities not found. wanted=[{wanted}] available=[{available}]")
+        raise ValueError(
+            f"Requested modalities not found. wanted=[{wanted}] available=[{available}]"
+        )
     return out
 
 
@@ -131,7 +139,9 @@ def _truncate_segments(
     return out
 
 
-def _save_dataset_fingerprint(run_dir: Path, data_root: str, adapter: DummyAdapter | XRFV2H5Adapter) -> None:
+def _save_dataset_fingerprint(
+    run_dir: Path, data_root: str, adapter: DummyAdapter | XRFV2H5Adapter
+) -> None:
     manifest = []
     for split in ["train", "test"]:
         for sample_id in adapter.split_ids(split):
@@ -226,7 +236,9 @@ def train_main(
     if kd_enabled and kd_teacher_ckpt:
         teacher_model = _load_teacher_model(kd_teacher_ckpt, seed=seed)
 
-    run_dir = create_run_dir(base_dir=runs_dir, config_dict=config, command_str="xrfv2-edge-tal train")
+    run_dir = create_run_dir(
+        base_dir=runs_dir, config_dict=config, command_str="xrfv2-edge-tal train"
+    )
     (run_dir / "checkpoints").mkdir(parents=True, exist_ok=True)
 
     train_ids = adapter.split_ids("train")
@@ -261,7 +273,9 @@ def train_main(
             train_items: list[tuple[dict[str, np.ndarray], list[dict[str, float | int]]]]
             if paper_enabled:
                 if paper_resample_to > 0:
-                    x, segments = resample_sample(x_dict=x, segments=segments, target_len=paper_resample_to)
+                    x, segments = resample_sample(
+                        x_dict=x, segments=segments, target_len=paper_resample_to
+                    )
                 windows = make_windows(
                     x_dict=x,
                     segments=segments,
@@ -289,7 +303,9 @@ def train_main(
                     num_classes=num_classes,
                     background_label=background_label,
                 )
-                teacher_probs = teacher_model.predict_proba(x_item) if teacher_model is not None else None
+                teacher_probs = (
+                    teacher_model.predict_proba(x_item) if teacher_model is not None else None
+                )
                 loss = model.train_step(
                     x_dict=x_item,
                     target=target,
@@ -335,7 +351,9 @@ def train_main(
         "tcn_layers": int(model_cfg.get("tcn_layers", 1)),
         "selected_modalities": selected_modalities or [],
     }
-    checkpoint_path = save_checkpoint(run_dir / "checkpoints" / "last.npz", model.state_dict(), metadata)
+    checkpoint_path = save_checkpoint(
+        run_dir / "checkpoints" / "last.npz", model.state_dict(), metadata
+    )
 
     metrics = {
         "train": {

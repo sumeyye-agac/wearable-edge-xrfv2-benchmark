@@ -111,8 +111,12 @@ def benchmark_main(
         },
     }
 
-    run_dir = create_run_dir(base_dir=output_dir, config_dict=config, command_str="xrfv2-edge-tal benchmark")
-    (run_dir / "benchmark.json").write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    run_dir = create_run_dir(
+        base_dir=output_dir, config_dict=config, command_str="xrfv2-edge-tal benchmark"
+    )
+    (run_dir / "benchmark.json").write_text(
+        json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+    )
     (run_dir / "dataset_fingerprint.json").write_text("{}\n", encoding="utf-8")
     write_metrics(run_dir, {"benchmark": payload})
 

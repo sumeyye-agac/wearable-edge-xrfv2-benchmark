@@ -26,7 +26,9 @@ def _set_seed(seed: int) -> None:
     np.random.seed(seed)
 
 
-def _adapter_from_name(adapter_name: str, data_root: str, seed: int) -> DummyAdapter | XRFV2H5Adapter:
+def _adapter_from_name(
+    adapter_name: str, data_root: str, seed: int
+) -> DummyAdapter | XRFV2H5Adapter:
     if adapter_name == "dummy":
         return DummyAdapter(seed=seed)
     if adapter_name == "xrfv2":
@@ -34,7 +36,9 @@ def _adapter_from_name(adapter_name: str, data_root: str, seed: int) -> DummyAda
     raise ValueError(f"Unsupported adapter: {adapter_name}")
 
 
-def _resolve_profile_names(config: dict[str, Any], profile: str | None, profiles: list[str] | None) -> list[str]:
+def _resolve_profile_names(
+    config: dict[str, Any], profile: str | None, profiles: list[str] | None
+) -> list[str]:
     data_cfg = config.get("data", {})
     profile_map = data_cfg.get("profiles", {})
     if not isinstance(profile_map, dict) or not profile_map:
@@ -200,11 +204,15 @@ def _evaluate_profile(
                 ground_truth.append(
                     {
                         "sample_id": sample_id,
-                        "start": _segment_start_seconds(seg, seq_len=seq_len, frame_time_s=frame_time_s),
+                        "start": _segment_start_seconds(
+                            seg, seq_len=seq_len, frame_time_s=frame_time_s
+                        ),
                     }
                 )
 
-        duration_s += _sequence_duration_seconds(meta=meta, seq_len=seq_len, frame_time_s=frame_time_s)
+        duration_s += _sequence_duration_seconds(
+            meta=meta, seq_len=seq_len, frame_time_s=frame_time_s
+        )
 
     metrics = compute_event_metrics(
         predictions=predictions,
@@ -225,7 +233,9 @@ def _profile_note(profile_name: str) -> str:
     return "default product target"
 
 
-def _render_profile_report(profile_metrics: OrderedDict[str, dict[str, Any]], config: dict[str, Any]) -> str:
+def _render_profile_report(
+    profile_metrics: OrderedDict[str, dict[str, Any]], config: dict[str, Any]
+) -> str:
     lines = [
         "# Event Profile Report",
         "",
@@ -271,12 +281,16 @@ def eval_event_main(
         backend=str(metadata.get("backend", runtime_cfg.get("backend", "torch"))),
         device=str(metadata.get("device", runtime_cfg.get("device", "auto"))),
         kernel_size=int(model_cfg.get("kernel_size", state.get("kernel_size", 5))),
-        tcn_layers=int(model_cfg.get("tcn_layers", state.get("tcn_layers", metadata.get("tcn_layers", 1)))),
+        tcn_layers=int(
+            model_cfg.get("tcn_layers", state.get("tcn_layers", metadata.get("tcn_layers", 1)))
+        ),
     )
     model.load_state_dict(state)
 
     adapter = _adapter_from_name(adapter_name=adapter_name, data_root=data_root, seed=seed)
-    positive_ids = _resolve_positive_ids(config=config, adapter_name=adapter_name, data_root=data_root)
+    positive_ids = _resolve_positive_ids(
+        config=config, adapter_name=adapter_name, data_root=data_root
+    )
 
     split = str(eval_cfg.get("split", "test"))
     selected_profiles = _resolve_profile_names(config=config, profile=profile, profiles=profiles)
@@ -301,7 +315,9 @@ def eval_event_main(
         )
 
         sample_x, _, _ = adapter.get_sample(adapter.split_ids(split)[0], split)
-        sample_x_sel = _select_modalities_for_profile(sample_x, config=config, profile_name=profile_name)
+        sample_x_sel = _select_modalities_for_profile(
+            sample_x, config=config, profile_name=profile_name
+        )
         latency = _latency_stats(model=model, x_dict=sample_x_sel, warmup=warmup, iters=iters)
 
         metrics["edge"] = {
@@ -319,7 +335,9 @@ def eval_event_main(
     primary = selected_profiles[0]
     report_md = _render_profile_report(profile_metrics=profile_metrics, config=config)
 
-    run_dir = create_run_dir(base_dir=output_dir, config_dict=config, command_str="xrfv2-edge-tal event-eval")
+    run_dir = create_run_dir(
+        base_dir=output_dir, config_dict=config, command_str="xrfv2-edge-tal event-eval"
+    )
     payload = {
         "task": "phone_interaction_event",
         "profile": primary,

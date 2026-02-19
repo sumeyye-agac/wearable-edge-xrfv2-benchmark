@@ -32,7 +32,9 @@ def _parse_mapping(payload: Any) -> dict[int, str]:
             if isinstance(item, dict):
                 item_id = item.get("id", item.get("label_id"))
                 item_name = item.get("name", item.get("label", item.get("action")))
-                if isinstance(item_id, (int, float, np.integer, np.floating)) and isinstance(item_name, str):
+                if isinstance(item_id, (int, float, np.integer, np.floating)) and isinstance(
+                    item_name, str
+                ):
                     mapping[int(item_id)] = item_name
         return mapping
 
@@ -50,7 +52,9 @@ def _parse_mapping(payload: Any) -> dict[int, str]:
                     mapping[int(key)] = maybe_name
         return mapping
 
-    numeric_values = all(isinstance(value, (int, float, np.integer, np.floating)) for value in payload.values())
+    numeric_values = all(
+        isinstance(value, (int, float, np.integer, np.floating)) for value in payload.values()
+    )
     if numeric_values:
         for name, value in payload.items():
             mapping[int(value)] = str(name)
@@ -62,7 +66,9 @@ def _parse_mapping(payload: Any) -> dict[int, str]:
             continue
         item_id = value.get("id", value.get("label_id"))
         item_name = value.get("name", value.get("label", value.get("action")))
-        if isinstance(item_id, (int, float, np.integer, np.floating)) and isinstance(item_name, str):
+        if isinstance(item_id, (int, float, np.integer, np.floating)) and isinstance(
+            item_name, str
+        ):
             mapping[int(item_id)] = item_name
 
     return mapping

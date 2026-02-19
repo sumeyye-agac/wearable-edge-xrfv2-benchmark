@@ -28,12 +28,16 @@ def _merge_segments(segments: list[SegmentLike], min_gap: int) -> list[SegmentLi
     merged: list[SegmentLike] = [dict(segments[0])]
     for seg in segments[1:]:
         last = merged[-1]
-        if int(seg["label"]) == int(last["label"]) and float(seg["start"]) - float(last["end"]) <= min_gap:
+        if (
+            int(seg["label"]) == int(last["label"])
+            and float(seg["start"]) - float(last["end"]) <= min_gap
+        ):
             new_end = float(seg["end"])
             old_len = max(1e-6, float(last["end"]) - float(last["start"]))
             new_len = max(1e-6, new_end - float(seg["start"]))
             last["score"] = float(
-                (float(last["score"]) * old_len + float(seg["score"]) * new_len) / max(old_len + new_len, 1e-6)
+                (float(last["score"]) * old_len + float(seg["score"]) * new_len)
+                / max(old_len + new_len, 1e-6)
             )
             last["end"] = new_end
         else:

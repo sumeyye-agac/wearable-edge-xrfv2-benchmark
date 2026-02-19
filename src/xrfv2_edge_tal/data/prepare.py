@@ -45,7 +45,9 @@ def _sha256_file(path: Path) -> str:
     return digest.hexdigest()
 
 
-def compute_dataset_fingerprint(data_root: str | Path, manifest: list[dict[str, Any]]) -> dict[str, Any]:
+def compute_dataset_fingerprint(
+    data_root: str | Path, manifest: list[dict[str, Any]]
+) -> dict[str, Any]:
     root = Path(data_root)
     files = []
     for child in sorted(root.glob("*")):
@@ -67,7 +69,9 @@ def compute_dataset_fingerprint(data_root: str | Path, manifest: list[dict[str, 
     }
 
 
-def prepare_dataset(adapter: RawAdapter, data_root: str | Path, output_dir: str | Path, seed: int = 42) -> dict[str, Path]:
+def prepare_dataset(
+    adapter: RawAdapter, data_root: str | Path, output_dir: str | Path, seed: int = 42
+) -> dict[str, Path]:
     out_dir = Path(output_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
 
@@ -79,14 +83,20 @@ def prepare_dataset(adapter: RawAdapter, data_root: str | Path, output_dir: str 
     splits_dir = out_dir / "splits"
     splits_dir.mkdir(parents=True, exist_ok=True)
     default_split_path = splits_dir / "default.json"
-    default_split_path.write_text(json.dumps(split, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    default_split_path.write_text(
+        json.dumps(split, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+    )
 
     lopo = create_lopo_splits(manifest)
-    (splits_dir / "lopo.json").write_text(json.dumps(lopo, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    (splits_dir / "lopo.json").write_text(
+        json.dumps(lopo, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+    )
 
     fingerprint = compute_dataset_fingerprint(data_root, manifest)
     fingerprint_path = out_dir / "dataset_fingerprint.json"
-    fingerprint_path.write_text(json.dumps(fingerprint, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    fingerprint_path.write_text(
+        json.dumps(fingerprint, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+    )
 
     return {
         "manifest": manifest_path,

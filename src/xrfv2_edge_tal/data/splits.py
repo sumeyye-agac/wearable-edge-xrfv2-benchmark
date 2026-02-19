@@ -18,7 +18,9 @@ def create_default_split(
     if not manifest:
         return {"train": [], "val": [], "test": []}
 
-    has_subject = subject_stratified and all("subject_id" in m and m["subject_id"] is not None for m in manifest)
+    has_subject = subject_stratified and all(
+        "subject_id" in m and m["subject_id"] is not None for m in manifest
+    )
     rng = np.random.default_rng(seed)
 
     if has_subject:

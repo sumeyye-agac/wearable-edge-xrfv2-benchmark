@@ -39,7 +39,9 @@ from xrfv2_edge_tal.labels.xrfv2_labels import build_binary_frame_labels, resolv
         ),
     ],
 )
-def test_resolve_positive_label_ids_variants(tmp_path: Path, payload: dict, expected: set[int]) -> None:
+def test_resolve_positive_label_ids_variants(
+    tmp_path: Path, payload: dict, expected: set[int]
+) -> None:
     (tmp_path / "info.json").write_text(json.dumps(payload), encoding="utf-8")
     ids = resolve_positive_label_ids(
         data_root=tmp_path,

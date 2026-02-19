@@ -35,7 +35,9 @@ def _set_seed(seed: int) -> None:
     np.random.seed(seed)
 
 
-def _adapter_from_name(adapter_name: str, data_root: str, seed: int) -> DummyAdapter | XRFV2H5Adapter:
+def _adapter_from_name(
+    adapter_name: str, data_root: str, seed: int
+) -> DummyAdapter | XRFV2H5Adapter:
     if adapter_name == "dummy":
         return DummyAdapter(seed=seed)
     if adapter_name == "xrfv2":
@@ -52,10 +54,14 @@ def _parse_modalities(value: Any) -> list[str] | None:
     if isinstance(value, list):
         items = [str(x).strip() for x in value if str(x).strip()]
         return items or None
-    raise ValueError(f"modalities must be list[str] or comma-separated string, got: {type(value)!r}")
+    raise ValueError(
+        f"modalities must be list[str] or comma-separated string, got: {type(value)!r}"
+    )
 
 
-def _select_modalities(x: dict[str, np.ndarray], selected: list[str] | None) -> dict[str, np.ndarray]:
+def _select_modalities(
+    x: dict[str, np.ndarray], selected: list[str] | None
+) -> dict[str, np.ndarray]:
     if not selected:
         return x
     selected_keys = resolve_modalities_to_raw_keys(
@@ -66,7 +72,9 @@ def _select_modalities(x: dict[str, np.ndarray], selected: list[str] | None) -> 
     if not out:
         available = ", ".join(sorted(x.keys()))
         wanted = ", ".join(selected)
-        raise ValueError(f"Requested modalities not found. wanted=[{wanted}] available=[{available}]")
+        raise ValueError(
+            f"Requested modalities not found. wanted=[{wanted}] available=[{available}]"
+        )
     return out
 
 
@@ -107,7 +115,9 @@ def eval_main(
         backend=backend,
         device=device,
         kernel_size=int(model_cfg.get("kernel_size", state.get("kernel_size", 5))),
-        tcn_layers=int(model_cfg.get("tcn_layers", state.get("tcn_layers", metadata.get("tcn_layers", 1)))),
+        tcn_layers=int(
+            model_cfg.get("tcn_layers", state.get("tcn_layers", metadata.get("tcn_layers", 1)))
+        ),
     )
     model.load_state_dict(state)
 
@@ -163,7 +173,9 @@ def eval_main(
 
         if paper_enabled:
             if paper_resample_to > 0:
-                x, segments = resample_sample(x_dict=x, segments=segments, target_len=paper_resample_to)
+                x, segments = resample_sample(
+                    x_dict=x, segments=segments, target_len=paper_resample_to
+                )
                 full_seq_len = paper_resample_to
 
             windows = make_windows(
@@ -206,7 +218,9 @@ def eval_main(
                 background_class=background_class,
             )
         else:
-            raise ValueError(f"Unsupported decode.mode='{decode_mode}'. Use 'per_class' or 'argmax'.")
+            raise ValueError(
+                f"Unsupported decode.mode='{decode_mode}'. Use 'per_class' or 'argmax'."
+            )
         decoded = temporal_nms(decoded, tiou_threshold=nms_tiou, classwise=True)
 
         for seg in decoded:
@@ -278,7 +292,9 @@ def eval_main(
         },
     }
 
-    run_dir = create_run_dir(base_dir=output_dir, config_dict=config, command_str="xrfv2-edge-tal eval")
+    run_dir = create_run_dir(
+        base_dir=output_dir, config_dict=config, command_str="xrfv2-edge-tal eval"
+    )
     write_metrics(run_dir, metrics)
     (run_dir / "dataset_fingerprint.json").write_text("{}\n", encoding="utf-8")
     (run_dir / "benchmark.json").write_text("{}\n", encoding="utf-8")

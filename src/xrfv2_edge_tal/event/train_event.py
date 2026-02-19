@@ -24,7 +24,9 @@ def _set_seed(seed: int) -> None:
     np.random.seed(seed)
 
 
-def _adapter_from_name(adapter_name: str, data_root: str, seed: int) -> DummyAdapter | XRFV2H5Adapter:
+def _adapter_from_name(
+    adapter_name: str, data_root: str, seed: int
+) -> DummyAdapter | XRFV2H5Adapter:
     if adapter_name == "dummy":
         return DummyAdapter(seed=seed)
     if adapter_name == "xrfv2":
@@ -38,8 +40,14 @@ def _resolve_profile_name(config: dict[str, Any], profile: str | None) -> str:
     selected = profile or str(data_cfg.get("selected_profile", default_profile))
     profiles = data_cfg.get("profiles", {})
     if not isinstance(profiles, dict) or selected not in profiles:
-        available = ", ".join(sorted(str(k) for k in profiles.keys())) if isinstance(profiles, dict) else "<none>"
-        raise ValueError(f"Profile '{selected}' not found under data.profiles. Available: {available}")
+        available = (
+            ", ".join(sorted(str(k) for k in profiles.keys()))
+            if isinstance(profiles, dict)
+            else "<none>"
+        )
+        raise ValueError(
+            f"Profile '{selected}' not found under data.profiles. Available: {available}"
+        )
     return selected
 
 
@@ -114,7 +122,9 @@ def train_event_main(
     profile_name = _resolve_profile_name(config=config, profile=profile)
     adapter = _adapter_from_name(adapter_name=adapter_name, data_root=data_root, seed=seed)
     input_dims = _infer_input_dims(adapter=adapter, profile_name=profile_name, config=config)
-    positive_ids = _resolve_positive_ids(config=config, adapter_name=adapter_name, data_root=data_root)
+    positive_ids = _resolve_positive_ids(
+        config=config, adapter_name=adapter_name, data_root=data_root
+    )
 
     model_name = str(model_cfg.get("name", "tiny_tcn"))
     hidden_dim = int(model_cfg.get("hidden_dim", 24))
@@ -133,7 +143,9 @@ def train_event_main(
         tcn_layers=int(model_cfg.get("tcn_layers", 1)),
     )
 
-    run_dir = create_run_dir(base_dir=runs_dir, config_dict=config, command_str="xrfv2-edge-tal event-train")
+    run_dir = create_run_dir(
+        base_dir=runs_dir, config_dict=config, command_str="xrfv2-edge-tal event-train"
+    )
     (run_dir / "checkpoints").mkdir(parents=True, exist_ok=True)
 
     train_ids = adapter.split_ids("train")
@@ -192,7 +204,9 @@ def train_event_main(
         "selected_modalities": config["data"]["profiles"][profile_name],
         "positive_label_ids": sorted(int(x) for x in positive_ids),
     }
-    checkpoint_path = save_checkpoint(run_dir / "checkpoints" / "last.npz", model.state_dict(), metadata)
+    checkpoint_path = save_checkpoint(
+        run_dir / "checkpoints" / "last.npz", model.state_dict(), metadata
+    )
 
     manifest = []
     for split in ["train", "test"]:
