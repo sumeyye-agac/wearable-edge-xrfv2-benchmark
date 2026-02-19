@@ -11,9 +11,10 @@ from typing import Any
 import numpy as np
 
 from xrfv2_edge_tal.artifacts import create_run_dir, write_metrics
-from xrfv2_edge_tal.checkpoint import save_checkpoint
+from xrfv2_edge_tal.checkpoint import load_checkpoint, save_checkpoint
 from xrfv2_edge_tal.data.adapters import DummyAdapter, XRFV2H5Adapter
 from xrfv2_edge_tal.data.prepare import compute_dataset_fingerprint
+from xrfv2_edge_tal.event.preprocess import normalization_config, normalize_modalities
 from xrfv2_edge_tal.labels.xrfv2_labels import build_binary_frame_labels, resolve_positive_label_ids
 from xrfv2_edge_tal.modalities import resolve_modalities_to_raw_keys
 from xrfv2_edge_tal.models.factory import build_model
@@ -60,6 +61,17 @@ def _select_modalities_for_profile(
     raw_keys = resolve_modalities_to_raw_keys(
         available_modalities=x.keys(),
         requested_modalities=[str(item) for item in requested],
+    )
+    return {key: x[key] for key in raw_keys if key in x}
+
+
+def _select_modalities_by_names(
+    x: dict[str, np.ndarray],
+    requested_modalities: list[str],
+) -> dict[str, np.ndarray]:
+    raw_keys = resolve_modalities_to_raw_keys(
+        available_modalities=x.keys(),
+        requested_modalities=[str(item) for item in requested_modalities],
     )
     return {key: x[key] for key in raw_keys if key in x}
 
@@ -117,6 +129,23 @@ def _infer_input_dims(
     return {key: int(arr.shape[1]) for key, arr in selected.items()}
 
 
+def _load_model_from_checkpoint(checkpoint: str, seed: int):
+    state, metadata = load_checkpoint(checkpoint)
+    model = build_model(
+        name=str(metadata["model_name"]),
+        input_dims=dict(metadata["input_dims"]),
+        num_classes=int(metadata["num_classes"]),
+        hidden_dim=int(metadata["hidden_dim"]),
+        seed=seed,
+        backend=str(metadata.get("backend", "torch")),
+        device=str(metadata.get("device", "auto")),
+        kernel_size=int(state.get("kernel_size", 5)),
+        tcn_layers=int(state.get("tcn_layers", metadata.get("tcn_layers", 1))),
+    )
+    model.load_state_dict(state)
+    return model, metadata
+
+
 def train_event_main(
     config: dict[str, Any],
     data_root: str,
@@ -130,6 +159,7 @@ def train_event_main(
     train_cfg = config.get("train", {})
     model_cfg = config.get("model", {})
     runtime_cfg = config.get("runtime", {})
+    data_cfg = config.get("data", {})
 
     epochs = int(train_cfg.get("epochs", 3))
     lr = float(train_cfg.get("lr", 1e-3))
@@ -140,10 +170,16 @@ def train_event_main(
     focal_gamma = float(loss_cfg.get("focal_gamma", 0.0))
     background_weight = float(loss_cfg.get("background_weight", 1.0))
     class_balance = bool(loss_cfg.get("class_balance", False))
+    distill_cfg = train_cfg.get("distillation", {})
+    distill_enabled = bool(distill_cfg.get("enabled", False))
+    distill_weight = float(distill_cfg.get("weight", 0.3))
+    distill_temperature = float(distill_cfg.get("temperature", 2.0))
+    teacher_checkpoint = str(distill_cfg.get("teacher_checkpoint", "")).strip()
 
     profile_name = _resolve_profile_name(config=config, profile=profile)
     adapter = _adapter_from_name(adapter_name=adapter_name, data_root=data_root, seed=seed)
     source_modality = _resolve_label_source_modality(config)
+    norm_enabled, norm_clip = normalization_config(data_cfg)
     input_dims = _infer_input_dims(adapter=adapter, profile_name=profile_name, config=config)
     positive_ids = _resolve_positive_ids(
         config=config, adapter_name=adapter_name, data_root=data_root
@@ -165,6 +201,17 @@ def train_event_main(
         kernel_size=int(model_cfg.get("kernel_size", 5)),
         tcn_layers=int(model_cfg.get("tcn_layers", 1)),
     )
+    teacher_model = None
+    teacher_modalities: list[str] = []
+    if distill_enabled and teacher_checkpoint:
+        teacher_model, teacher_meta = _load_model_from_checkpoint(teacher_checkpoint, seed=seed)
+        teacher_modalities = [str(x) for x in teacher_meta.get("selected_modalities", [])]
+        if not teacher_modalities:
+            teacher_profile = str(distill_cfg.get("teacher_profile", ""))
+            if teacher_profile and teacher_profile in config.get("data", {}).get("profiles", {}):
+                teacher_modalities = [str(x) for x in config["data"]["profiles"][teacher_profile]]
+            else:
+                teacher_modalities = [str(x) for x in config["data"]["profiles"][profile_name]]
 
     run_dir = create_run_dir(
         base_dir=runs_dir, config_dict=config, command_str="xrfv2-edge-tal event-train"
@@ -190,17 +237,35 @@ def train_event_main(
                 source_modality=source_modality,
             )
             x_sel = _select_modalities_for_profile(x, config=config, profile_name=profile_name)
+            x_sel = normalize_modalities(
+                x_sel,
+                enabled=norm_enabled,
+                clip=norm_clip,
+            )
             seq_len = int(next(iter(x_sel.values())).shape[0])
             target = build_binary_frame_labels(
                 segments=segments,
                 seq_len=seq_len,
                 positive_label_ids=positive_ids,
             )
+            teacher_probs = None
+            if teacher_model is not None and teacher_modalities:
+                x_teacher = _select_modalities_by_names(x, teacher_modalities)
+                if x_teacher:
+                    x_teacher = normalize_modalities(
+                        x_teacher,
+                        enabled=norm_enabled,
+                        clip=norm_clip,
+                    )
+                    teacher_probs = teacher_model.predict_proba(x_teacher)
             loss = model.train_step(
                 x_dict=x_sel,
                 target=target,
                 lr=lr,
                 modality_dropout_p=modality_dropout_p,
+                teacher_probs=teacher_probs,
+                distill_weight=distill_weight if teacher_probs is not None else 0.0,
+                temperature=distill_temperature,
                 focal_gamma=focal_gamma,
                 background_label=background_label,
                 background_weight=background_weight,
@@ -263,6 +328,17 @@ def train_event_main(
         "labels": {
             "source_modality": source_modality,
             "positive_label_ids": sorted(int(x) for x in positive_ids),
+        },
+        "distillation": {
+            "enabled": bool(teacher_model is not None and distill_enabled),
+            "teacher_checkpoint": teacher_checkpoint,
+            "teacher_modalities": teacher_modalities,
+            "weight": distill_weight,
+            "temperature": distill_temperature,
+        },
+        "normalization": {
+            "enabled": norm_enabled,
+            "clip": norm_clip,
         },
         "checkpoint": str(checkpoint_path),
     }

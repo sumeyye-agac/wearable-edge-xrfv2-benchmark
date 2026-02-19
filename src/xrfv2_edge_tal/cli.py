@@ -273,6 +273,62 @@ def cmd_event_eval(
     _echo(f"Metrics: {run_dir / 'metrics.json'}")
 
 
+def _parse_float_csv(value: str | None, name: str) -> list[float] | None:
+    if value is None:
+        return None
+    parts = [item.strip() for item in value.split(",") if item.strip()]
+    if not parts:
+        return None
+    try:
+        return [float(item) for item in parts]
+    except ValueError as exc:
+        raise ValueError(f"{name} must be comma-separated floats, got: {value}") from exc
+
+
+def cmd_event_calibrate(
+    checkpoint: str,
+    config: str,
+    data_root: str,
+    adapter: str,
+    seed: int,
+    output_dir: str,
+    profile: str | None,
+    profiles: str | None,
+    thresholds: str | None,
+    cooldowns: str | None,
+    metric_mode: str,
+    fp_hour_budget: float | None,
+    overrides: list[str],
+) -> None:
+    from xrfv2_edge_tal.event.calibrate_event import calibrate_event_main
+
+    cfg = load_yaml_config(config)
+    cfg = apply_cli_overrides(cfg, overrides)
+    profile_list = [item.strip() for item in profiles.split(",")] if profiles else None
+    default_profile = profile_list[0] if profile_list else profile
+    cfg = _apply_profile_modalities(cfg, default_profile)
+
+    threshold_list = _parse_float_csv(thresholds, name="thresholds")
+    cooldown_list = _parse_float_csv(cooldowns, name="cooldowns")
+    run_dir = calibrate_event_main(
+        checkpoint=checkpoint,
+        config=cfg,
+        data_root=data_root,
+        adapter_name=adapter,
+        seed=seed,
+        output_dir=output_dir,
+        profile=cfg["data"]["selected_profile"],
+        profiles=profile_list,
+        thresholds=threshold_list,
+        cooldowns=cooldown_list,
+        metric_mode=metric_mode,
+        fp_hour_budget=fp_hour_budget,
+    )
+    _echo(f"Event calibration run dir: {run_dir}")
+    _echo(f"Report: {run_dir / 'calibration_report.md'}")
+    _echo(f"Grid: {run_dir / 'calibration_grid.json'}")
+
+
 def cmd_benchmark(checkpoint: str, config: str, seed: int, output_dir: str) -> None:
     from xrfv2_edge_tal.benchmark import benchmark_main
 
@@ -413,6 +469,38 @@ if HAS_TYPER:
             overrides=override or [],
         )
 
+    @app.command("event-calibrate")
+    def event_calibrate(
+        checkpoint: str = typer.Option(..., "--checkpoint"),
+        config: str = typer.Option(..., "--config"),
+        data_root: str = "data/raw/xrfv2",
+        adapter: str = "dummy",
+        seed: int = 42,
+        output_dir: str = "runs",
+        profile: str | None = None,
+        profiles: str | None = None,
+        thresholds: str | None = None,
+        cooldowns: str | None = None,
+        metric_mode: str = "within_segment",
+        fp_hour_budget: float | None = None,
+        override: list[str] | None = None,
+    ) -> None:
+        cmd_event_calibrate(
+            checkpoint=checkpoint,
+            config=config,
+            data_root=data_root,
+            adapter=adapter,
+            seed=seed,
+            output_dir=output_dir,
+            profile=profile,
+            profiles=profiles,
+            thresholds=thresholds,
+            cooldowns=cooldowns,
+            metric_mode=metric_mode,
+            fp_hour_budget=fp_hour_budget,
+            overrides=override or [],
+        )
+
     @app.command("benchmark")
     def benchmark(
         checkpoint: str = typer.Option(..., "--checkpoint"),
@@ -491,6 +579,21 @@ else:
         p_event_eval.add_argument("--profiles", default=None)
         p_event_eval.add_argument("--override", action="append", default=[])
 
+        p_event_cal = sub.add_parser("event-calibrate")
+        p_event_cal.add_argument("--checkpoint", required=True)
+        p_event_cal.add_argument("--config", required=True)
+        p_event_cal.add_argument("--data-root", default="data/raw/xrfv2")
+        p_event_cal.add_argument("--adapter", default="dummy", choices=["dummy", "xrfv2"])
+        p_event_cal.add_argument("--seed", type=int, default=42)
+        p_event_cal.add_argument("--output-dir", default="runs")
+        p_event_cal.add_argument("--profile", default=None)
+        p_event_cal.add_argument("--profiles", default=None)
+        p_event_cal.add_argument("--thresholds", default=None)
+        p_event_cal.add_argument("--cooldowns", default=None)
+        p_event_cal.add_argument("--metric-mode", default="within_segment")
+        p_event_cal.add_argument("--fp-hour-budget", type=float, default=None)
+        p_event_cal.add_argument("--override", action="append", default=[])
+
         p_bench = sub.add_parser("benchmark")
         p_bench.add_argument("--checkpoint", required=True)
         p_bench.add_argument("--config", required=True)
@@ -560,6 +663,22 @@ else:
                 output_dir=args.output_dir,
                 profile=args.profile,
                 profiles=args.profiles,
+                overrides=args.override,
+            )
+        elif args.command == "event-calibrate":
+            cmd_event_calibrate(
+                checkpoint=args.checkpoint,
+                config=args.config,
+                data_root=args.data_root,
+                adapter=args.adapter,
+                seed=args.seed,
+                output_dir=args.output_dir,
+                profile=args.profile,
+                profiles=args.profiles,
+                thresholds=args.thresholds,
+                cooldowns=args.cooldowns,
+                metric_mode=args.metric_mode,
+                fp_hour_budget=args.fp_hour_budget,
                 overrides=args.override,
             )
         elif args.command == "benchmark":

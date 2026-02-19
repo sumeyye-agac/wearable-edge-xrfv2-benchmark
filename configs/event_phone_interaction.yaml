@@ -7,6 +7,8 @@ data:
     all_imu: ["airpods", "imu_gl", "imu_lh", "imu_rh", "imu_lp", "imu_rp"]
     wifi_all: ["wifi", "airpods", "imu_gl", "imu_lh", "imu_rh", "imu_lp", "imu_rp"]
   default_profile: earbuds_glasses
+  normalize_per_sample: true
+  normalize_clip: 8.0
 
 labels:
   positive_action_names:
@@ -30,6 +32,11 @@ train:
   lr: 0.001
   modality_dropout_p: 0.1
   background_label: 0
+  distillation:
+    enabled: false
+    teacher_checkpoint: ""
+    weight: 0.3
+    temperature: 2.0
 
 decode:
   mode: argmax

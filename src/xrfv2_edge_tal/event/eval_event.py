@@ -15,6 +15,7 @@ from xrfv2_edge_tal.artifacts import create_run_dir, write_metrics
 from xrfv2_edge_tal.checkpoint import load_checkpoint
 from xrfv2_edge_tal.data.adapters import DummyAdapter, XRFV2H5Adapter
 from xrfv2_edge_tal.event.metrics import compute_event_metrics
+from xrfv2_edge_tal.event.preprocess import normalization_config, normalize_modalities
 from xrfv2_edge_tal.event.trigger import frame_probs_to_event_triggers
 from xrfv2_edge_tal.labels.xrfv2_labels import resolve_positive_label_ids
 from xrfv2_edge_tal.modalities import resolve_modalities_to_raw_keys
@@ -177,6 +178,8 @@ def _evaluate_profile(
     config: dict[str, Any],
     positive_ids: set[int],
     source_modality: str,
+    norm_enabled: bool,
+    norm_clip: float | None,
 ) -> tuple[dict[str, Any], list[dict[str, Any]], list[dict[str, Any]], float]:
     eval_cfg = config.get("eval", {})
     trigger_cfg = eval_cfg.get("trigger", {})
@@ -209,6 +212,7 @@ def _evaluate_profile(
             source_modality=source_modality,
         )
         x_sel = _select_modalities_for_profile(x, config=config, profile_name=profile_name)
+        x_sel = normalize_modalities(x_sel, enabled=norm_enabled, clip=norm_clip)
         seq_len = int(next(iter(x_sel.values())).shape[0])
 
         probs = model.predict_proba(x_sel)
@@ -316,6 +320,7 @@ def eval_event_main(
     runtime_cfg = config.get("runtime", {})
     model_cfg = config.get("model", {})
     eval_cfg = config.get("eval", {})
+    data_cfg = config.get("data", {})
 
     model = build_model(
         name=str(metadata.get("model_name", model_cfg.get("name", "tiny_tcn"))),
@@ -337,6 +342,7 @@ def eval_event_main(
         config=config, adapter_name=adapter_name, data_root=data_root
     )
     source_modality = _resolve_label_source_modality(config)
+    norm_enabled, norm_clip = normalization_config(data_cfg)
 
     split = str(eval_cfg.get("split", "test"))
     selected_profiles = _resolve_profile_names(config=config, profile=profile, profiles=profiles)
@@ -359,12 +365,15 @@ def eval_event_main(
             config=config,
             positive_ids=positive_ids,
             source_modality=source_modality,
+            norm_enabled=norm_enabled,
+            norm_clip=norm_clip,
         )
 
         sample_x, _, _ = adapter.get_sample(adapter.split_ids(split)[0], split)
         sample_x_sel = _select_modalities_for_profile(
             sample_x, config=config, profile_name=profile_name
         )
+        sample_x_sel = normalize_modalities(sample_x_sel, enabled=norm_enabled, clip=norm_clip)
         latency = _latency_stats(model=model, x_dict=sample_x_sel, warmup=warmup, iters=iters)
 
         metrics["edge"] = {
@@ -394,6 +403,10 @@ def eval_event_main(
         "labels": {
             "source_modality": source_modality,
             "positive_label_ids": sorted(int(x) for x in positive_ids),
+        },
+        "normalization": {
+            "enabled": norm_enabled,
+            "clip": norm_clip,
         },
     }
     write_metrics(run_dir, payload)

@@ -87,3 +87,39 @@ def test_event_train_eval_multi_profile_smoke(tmp_path: Path) -> None:
     report_text = report_path.read_text(encoding="utf-8")
     assert "earbuds_glasses" in report_text
     assert "glasses_only" in report_text
+
+
+def test_event_train_with_distillation_smoke(tmp_path: Path) -> None:
+    teacher_cfg = _event_config()
+    teacher_cfg["train"]["max_train_samples"] = 3
+
+    teacher_run = train_event_main(
+        config=teacher_cfg,
+        data_root=str(tmp_path / "raw"),
+        adapter_name="dummy",
+        seed=13,
+        runs_dir=str(tmp_path / "runs"),
+        profile="all_imu",
+    )
+    teacher_ckpt = teacher_run / "checkpoints" / "last.npz"
+    assert teacher_ckpt.exists()
+
+    student_cfg = _event_config()
+    student_cfg["train"]["distillation"] = {
+        "enabled": True,
+        "teacher_checkpoint": str(teacher_ckpt),
+        "weight": 0.25,
+        "temperature": 2.0,
+    }
+    student_cfg["train"]["max_train_samples"] = 3
+
+    student_run = train_event_main(
+        config=student_cfg,
+        data_root=str(tmp_path / "raw"),
+        adapter_name="dummy",
+        seed=13,
+        runs_dir=str(tmp_path / "runs"),
+        profile="earbuds_glasses",
+    )
+    metrics = json.loads((student_run / "metrics.json").read_text(encoding="utf-8"))
+    assert metrics["distillation"]["enabled"] is True
