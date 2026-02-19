@@ -14,6 +14,7 @@ from typing import Any
 from xrfv2_edge_tal.config import apply_cli_overrides, load_yaml_config
 from xrfv2_edge_tal.data.adapters import DummyAdapter, XRFV2H5Adapter
 from xrfv2_edge_tal.data.prepare import prepare_dataset
+from xrfv2_edge_tal.data.probe import probe_xrfv2_h5
 from xrfv2_edge_tal.modalities import resolve_requested_modalities
 
 try:
@@ -90,6 +91,7 @@ def cmd_inspect(
     data_root: str = "data/raw/xrfv2",
     seed: int = 42,
     list_modalities: bool = False,
+    show_shapes: bool = False,
 ) -> None:
     root = Path(data_root)
     summary = _directory_summary(root)
@@ -118,6 +120,10 @@ def cmd_inspect(
     if list_modalities:
         canonical = resolve_requested_modalities(ds.modalities, requested_modalities=None)
         details["canonical_modalities"] = canonical
+    if show_shapes and adapter == "xrfv2":
+        details["shape_probe"] = probe_xrfv2_h5(data_root=root, sample_index=0)
+    elif show_shapes:
+        details["shape_probe"] = {"warning": "--show-shapes currently supports adapter=xrfv2 only"}
     _echo(json.dumps(details, indent=2, sort_keys=True))
 
 
@@ -306,9 +312,14 @@ if HAS_TYPER:
         data_root: str = "data/raw/xrfv2",
         seed: int = 42,
         list_modalities: bool = False,
+        show_shapes: bool = False,
     ) -> None:
         cmd_inspect(
-            adapter=adapter, data_root=data_root, seed=seed, list_modalities=list_modalities
+            adapter=adapter,
+            data_root=data_root,
+            seed=seed,
+            list_modalities=list_modalities,
+            show_shapes=show_shapes,
         )
 
     @app.command("prepare")
@@ -435,6 +446,7 @@ else:
         p_inspect.add_argument("--data-root", default="data/raw/xrfv2")
         p_inspect.add_argument("--seed", type=int, default=42)
         p_inspect.add_argument("--list-modalities", action="store_true")
+        p_inspect.add_argument("--show-shapes", action="store_true")
 
         p_prepare = sub.add_parser("prepare")
         p_prepare.add_argument("--adapter", default="dummy", choices=["dummy", "xrfv2"])
@@ -500,6 +512,7 @@ else:
                 data_root=args.data_root,
                 seed=args.seed,
                 list_modalities=bool(args.list_modalities),
+                show_shapes=bool(args.show_shapes),
             )
         elif args.command == "prepare":
             cmd_prepare(
