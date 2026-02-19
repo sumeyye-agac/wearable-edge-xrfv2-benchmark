@@ -88,22 +88,24 @@ This project uses a strict comparison ladder:
 
 If upper bounds are non-trivial while product profiles drop, that is a valid and expected deployment trade-off, not hidden by unrealistic sensor assumptions.
 
-### Local sanity run artifacts (subset run)
+### Full-run artifacts (real XRF V2)
 
-Generated locally with:
+Primary full run (teacher, upper-bound profile):
 
-- train: `epochs=1`, `max_train_samples=512`
-- eval: `max_eval_samples=256`
+- Train (`wifi_all`, full train split, 8 epochs): `runs/20260219_013737_b4a5a303/`
+- Full eval (all profiles): `runs/20260219_033317_25b6180b/`
+- Product-aware calibration (subset for speed, `max_eval_samples=2048`): `runs/20260219_040033_e4468f56/`
 
-Run IDs:
+Distillation attempt (student on `earbuds_glasses`):
 
-- Upper-bound training (`all_imu`): `runs/20260219_010431_c80b482c/`
-- Upper-bound eval + profile report: `runs/20260219_010627_523202b4/`
-- Upper-bound training (`wifi_all`): `runs/20260219_011023_d4d46069/`
-- Multi-profile eval from `wifi_all` model: `runs/20260219_011222_523202b4/`
-- Calibration grid/report: `runs/20260219_011604_523202b4/`
-- Distilled student (`earbuds_glasses`) train: `runs/20260219_011614_8dc10974/`
-- Distilled student calibration: `runs/20260219_012010_a7c6fff7/`
+- Train (`earbuds_glasses`, distilled, full train split, 6 epochs): `runs/20260219_040058_afb39261/`
+- Full eval: `runs/20260219_043058_25b6180b/`
+- Product-profile calibration: `runs/20260219_043826_4686cd1d/`
+
+Measured timing (Apple Silicon + MPS):
+
+- Full teacher run average epoch: `~239s` (`runs/20260219_013737_b4a5a303/metrics.json`)
+- Full distilled student average epoch: `~208s` (`runs/20260219_040058_afb39261/metrics.json`)
 
 Read generated reports directly:
 
@@ -111,6 +113,14 @@ Read generated reports directly:
 - `runs/<eval_run_id>/profile_metrics.json`
 - `runs/<calibration_run_id>/calibration_report.md`
 - `runs/<calibration_run_id>/calibration_grid.json`
+
+Current status from reproducible artifacts:
+
+- `wifi_all` can reach non-zero budgeted quality in calibrated subset mode:
+  - `within_segment F1=0.3576`, `FP/hour=6.824` in `runs/20260219_040033_e4468f56/`
+- `earbuds_glasses` and `glasses_only` are not yet deploy-ready under the same FP budget:
+  - budget-constrained runs collapse to near-zero recall in current baselines.
+- This is an explicit product gap, not hidden. The repo keeps profile reports and calibration grids so the trade-off is inspectable.
 
 Table schema (generated, not hand-written):
 
