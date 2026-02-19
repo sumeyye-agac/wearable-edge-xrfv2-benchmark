@@ -84,14 +84,7 @@ def _load_info_json(data_root: str | Path) -> dict[str, Any]:
     return raw
 
 
-def resolve_positive_label_ids(
-    data_root: str | Path,
-    positive_action_names: list[str],
-    fallback_positive_label_ids: list[int] | None = None,
-) -> set[int]:
-    """Resolve positive action names to label ids from info.json, with config fallback."""
-    info = _load_info_json(data_root)
-
+def _extract_label_mapping(info: dict[str, Any]) -> tuple[dict[int, str], list[str]]:
     extracted: dict[int, str] = {}
     keys_found = [key for key in _LABEL_KEYS if key in info]
     for key in keys_found:
@@ -102,6 +95,17 @@ def resolve_positive_label_ids(
             if key in segment_info:
                 keys_found.append(f"segment_info.{key}")
                 extracted.update(_parse_mapping(segment_info[key]))
+    return extracted, keys_found
+
+
+def resolve_positive_label_ids(
+    data_root: str | Path,
+    positive_action_names: list[str],
+    fallback_positive_label_ids: list[int] | None = None,
+) -> set[int]:
+    """Resolve positive action names to label ids from info.json, with config fallback."""
+    info = _load_info_json(data_root)
+    extracted, keys_found = _extract_label_mapping(info)
 
     wanted = {_normalize_text(name) for name in positive_action_names}
     resolved = {
@@ -124,6 +128,37 @@ def resolve_positive_label_ids(
         "Could not resolve positive label ids from info.json. "
         f"Found keys: {found}. Expected one of: {expected}. "
         f"Parsed label map: {parsed}. Wanted action names: {wanted_joined}. "
+        "Use config fallback labels.positive_label_ids=[...]."
+    )
+
+
+def resolve_proxy_label_ids(
+    data_root: str | Path,
+    keywords: list[str] | None = None,
+    fallback_positive_label_ids: list[int] | None = None,
+) -> set[int]:
+    """Resolve a physically observable proxy label set by action-name keywords."""
+    info = _load_info_json(data_root)
+    extracted, keys_found = _extract_label_mapping(info)
+    if not keywords:
+        keywords = ["head", "face", "phone", "ear", "glasses"]
+    normalized_keywords = [_normalize_text(k) for k in keywords if str(k).strip()]
+    resolved = {
+        int(label_id)
+        for label_id, label_name in extracted.items()
+        if any(keyword in _normalize_text(label_name) for keyword in normalized_keywords)
+    }
+    if resolved:
+        return resolved
+    if fallback_positive_label_ids:
+        return {int(x) for x in fallback_positive_label_ids}
+
+    found = ", ".join(keys_found) if keys_found else "<none>"
+    parsed = ", ".join(f"{k}:{v}" for k, v in sorted(extracted.items())) if extracted else "<none>"
+    raise ValueError(
+        "Could not resolve proxy positive label ids from info.json. "
+        f"Found keys: {found}. Parsed label map: {parsed}. "
+        f"Keywords: {', '.join(normalized_keywords) if normalized_keywords else '<none>'}. "
         "Use config fallback labels.positive_label_ids=[...]."
     )
 
@@ -156,4 +191,4 @@ def build_binary_frame_labels(
     return labels
 
 
-__all__ = ["build_binary_frame_labels", "resolve_positive_label_ids"]
+__all__ = ["build_binary_frame_labels", "resolve_positive_label_ids", "resolve_proxy_label_ids"]

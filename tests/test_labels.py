@@ -6,7 +6,11 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from xrfv2_edge_tal.labels.xrfv2_labels import build_binary_frame_labels, resolve_positive_label_ids
+from xrfv2_edge_tal.labels.xrfv2_labels import (
+    build_binary_frame_labels,
+    resolve_positive_label_ids,
+    resolve_proxy_label_ids,
+)
 
 
 @pytest.mark.parametrize(
@@ -90,3 +94,29 @@ def test_build_binary_frame_labels_normalized_segments() -> None:
     assert np.all(y[:2] == 0)
     assert np.all(y[2:5] == 1)
     assert np.all(y[5:] == 0)
+
+
+def test_resolve_proxy_label_ids_keywords(tmp_path: Path) -> None:
+    payload = {
+        "segment_info": {
+            "id2action": {
+                "3": "Drinking Water",
+                "9": "Touching Face",
+                "16": "Answering Phone",
+                "21": "Using Phone",
+            }
+        }
+    }
+    (tmp_path / "info.json").write_text(json.dumps(payload), encoding="utf-8")
+    ids = resolve_proxy_label_ids(data_root=tmp_path, keywords=["face", "phone"])
+    assert ids == {9, 16, 21}
+
+
+def test_resolve_proxy_label_ids_fallback(tmp_path: Path) -> None:
+    (tmp_path / "info.json").write_text(json.dumps({"foo": "bar"}), encoding="utf-8")
+    ids = resolve_proxy_label_ids(
+        data_root=tmp_path,
+        keywords=["face", "phone"],
+        fallback_positive_label_ids=[5, 7],
+    )
+    assert ids == {5, 7}

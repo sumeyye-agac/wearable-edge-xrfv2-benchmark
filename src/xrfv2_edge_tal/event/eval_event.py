@@ -23,7 +23,7 @@ from xrfv2_edge_tal.event.candidates import (
 from xrfv2_edge_tal.event.metrics import compute_event_metrics
 from xrfv2_edge_tal.event.preprocess import normalization_config, normalize_modalities
 from xrfv2_edge_tal.event.trigger import filter_trigger_candidates, frame_probs_to_event_triggers
-from xrfv2_edge_tal.labels.xrfv2_labels import resolve_positive_label_ids
+from xrfv2_edge_tal.labels.xrfv2_labels import resolve_positive_label_ids, resolve_proxy_label_ids
 from xrfv2_edge_tal.modalities import resolve_modalities_to_raw_keys
 from xrfv2_edge_tal.models.factory import build_model
 
@@ -74,13 +74,21 @@ def _resolve_profile_names(
 
 def _resolve_positive_ids(config: dict[str, Any], adapter_name: str, data_root: str) -> set[int]:
     labels_cfg = config.get("labels", {})
+    task_variant = str(labels_cfg.get("task_variant", "phone_interaction")).strip().lower()
     explicit = labels_cfg.get("positive_label_ids", [])
     names = labels_cfg.get("positive_action_names", ["Answer the phone", "Use phone"])
+    proxy_keywords = labels_cfg.get("proxy_keywords", ["head", "face", "phone", "ear", "glasses"])
 
     if explicit:
         return {int(x) for x in explicit}
     if adapter_name == "dummy":
-        return {1, 2}
+        return {1, 2} if task_variant == "phone_interaction" else {1, 2, 3}
+    if task_variant == "hand_to_head_proxy":
+        return resolve_proxy_label_ids(
+            data_root=data_root,
+            keywords=[str(x) for x in proxy_keywords],
+            fallback_positive_label_ids=None,
+        )
     return resolve_positive_label_ids(
         data_root=data_root,
         positive_action_names=[str(x) for x in names],

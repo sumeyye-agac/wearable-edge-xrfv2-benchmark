@@ -11,9 +11,16 @@ data:
   normalize_clip: 8.0
 
 labels:
+  task_variant: phone_interaction
   positive_action_names:
     - "Answer the phone"
     - "Use phone"
+  proxy_keywords:
+    - "head"
+    - "face"
+    - "phone"
+    - "ear"
+    - "glasses"
   positive_label_ids: []
   source_modality: "imu"
 
