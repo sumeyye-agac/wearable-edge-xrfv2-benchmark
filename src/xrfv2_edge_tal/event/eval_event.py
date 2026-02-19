@@ -266,6 +266,8 @@ def _evaluate_profile(
 
 
 def _profile_note(profile_name: str) -> str:
+    if profile_name == "wifi_all":
+        return "upper-bound profile with Wi-Fi + all IMU; not product-realistic"
     if profile_name == "glasses_only":
         return "fallback profile: expected drop; used for robustness"
     if profile_name == "all_imu":

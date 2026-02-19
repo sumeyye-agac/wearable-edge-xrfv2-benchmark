@@ -1,149 +1,120 @@
-# Deploy-Ready Phone Interaction Event Detection (XRF V2 IMU)
+# XRF V2 Wearable Event Detection (Edge-First)
 
-This repository is a reproducible, edge-first benchmark for **phone interaction event detection** on **XRF V2 multi-device IMU**, with a default deploy profile that uses only **earbuds + smart glasses**.
+`xrfv2-edge-tal` is a reproducible benchmark for **phone interaction event detection** on the XRF V2 wearable dataset, with a product-first sensor target: **AirPods IMU + glasses receiver IMU**.
 
-## What This Repo Does
+## What This Repository Does
 
-- Data: XRF V2 (2025), a modern multi-device wearable dataset (phone/watch/earbuds/glasses IMU streams).
-- Task: detect discrete **Phone Interaction Events** (trigger timestamps), not full TAL by default.
-- Product sensor target:
-  - default profile: `earbuds_glasses`
-  - fallback profile: `glasses_only`
-- Product metrics: Precision, Recall, F1, FP/hour, onset delay, CPU latency, model size.
-- Reproducibility: every run writes a strict artifact bundle under `runs/<run_id>/`.
+- Uses XRF V2 (multi-device IMU + Wi-Fi) without redistributing any dataset files.
+- Trains lightweight frame models and converts frame probabilities into event triggers.
+- Reports product-style metrics:
+  - `onset_strict` (timestamp tolerance matching)
+  - `within_segment` (trigger lands anywhere inside GT segment)
+  - FP/hour, onset delay, model size, CPU latency
+- Enforces reproducibility with run artifacts under `runs/<run_id>/`.
 
-## Why Earbuds + Glasses
+## Data (No Redistribution)
 
-This is an intentional deployment constraint:
-- avoids unrealistic dependence on phone/watch signals that may be unavailable in product runtime
-- matches always-on wearable sensing for hands-free interaction scenarios
-- gives a clear engineering story: robust default path + graceful fallback on earbud disconnect
+This repo does **not** ship XRF V2 data. Obtain it from the official XRFV2 sources.
 
-## Data
+Expected raw directory:
 
-We do **not** redistribute XRF V2. Obtain it from the **Official XRFV2 repo** / official distribution channels.
+```text
+data/raw/xrfv2_kaggle/
+  train_data.h5
+  train_label.json
+  test_data.h5
+  test_label.json
+  info.json
+```
 
-Expected raw directory (example: `data/raw/xrfv2/`):
-- `train_data.h5`
-- `train_label.json`
-- `test_data.h5`
-- `test_label.json`
-- `info.json`
+## Data Format Note (Important)
 
-Notes:
-- XRF V2 can include IMU from phone/watch/earbuds/glasses. This repo defaults to earbuds+glasses only.
-- Earbuds are often sampled lower (commonly 25Hz) while others can be 50Hz; pipeline code converts to a canonical frame representation before training/eval.
+XRF V2 `imu` is a packed 5-receiver tensor. This repository explicitly splits it into receiver keys:
+
+- `imu_gl` (glasses receiver)
+- `imu_lh`, `imu_rh`, `imu_lp`, `imu_rp`
+
+`airpods` is reduced to 6 channels (`acc + rot`) from the original 9-channel tensor.
+
+You can probe real shapes with:
+
+```bash
+python scripts/probe_xrfv2.py --data-root data/raw/xrfv2_kaggle
+xrfv2-edge-tal inspect --adapter xrfv2 --data-root data/raw/xrfv2_kaggle --list-modalities --show-shapes
+```
+
+## Deployment Profiles (True Keys)
+
+Profiles are configured with raw modality keys to avoid ambiguity:
+
+- `earbuds_glasses`: `airpods`, `imu_gl` (default product target)
+- `glasses_only`: `imu_gl` (fallback)
+- `all_imu`: `airpods`, `imu_gl`, `imu_lh`, `imu_rh`, `imu_lp`, `imu_rp` (upper bound)
+- `wifi_all`: `wifi` + all IMU keys (upper bound, non-product)
 
 ## Event Definition
 
-Positive event = union of two XRF V2 actions by name:
+Positive event = union of action names:
+
 - `Answer the phone`
 - `Use phone`
 
-Model output is converted to event triggers with:
-- smoothing
-- thresholding
-- cooldown
-- optional hysteresis
+Default label source is `labels.source_modality=imu` to prevent cross-modality label duplication. Optional `merged_dedup` is supported for diagnostics.
 
-Metrics:
-- Precision / Recall / F1: trigger correctness under onset matching tolerance.
-- FP/hour: false alarms normalized by duration.
-- onset delay: delay between matched prediction and GT start (mean/p50/p90).
-
-Why event detection first (instead of full TAL):
-- closer to a ship-able feature (triggering UX logic)
-- easier false-alarm control
-- cleaner latency and energy budgeting on edge hardware
-
-## Deployment Profiles
-
-| Profile | Sensors | Intended use |
-|---|---|---|
-| `earbuds_glasses` | Earbuds + Glasses IMU | Default product target |
-| `glasses_only` | Glasses IMU | Fallback when earbuds disconnect |
-| `all_imu` | Phone + Watch + Earbuds + Glasses IMU | Diagnostic upper bound (non-product) |
-
-Restricting sensors is deliberate. It improves realism and portfolio differentiation, and avoids inflated scores from signals not guaranteed at runtime. Performance may drop as sensors are removed; this repository reports that explicitly via profile reports.
-
-## Quickstart (No Dataset Required)
+## Quickstart (Dummy)
 
 ```bash
 pip install -e ".[dev]"
 xrfv2-edge-tal event-train --config configs/event_phone_interaction.yaml --adapter dummy
-xrfv2-edge-tal event-eval --config configs/event_phone_interaction.yaml --adapter dummy --checkpoint runs/<train_run_id>/checkpoints/last.npz
+xrfv2-edge-tal event-eval --config configs/event_phone_interaction.yaml --adapter dummy --checkpoint runs/<train_run_id>/checkpoints/last.npz --profiles earbuds_glasses,glasses_only
 ```
 
-Expected JSON output keys (example):
-
-```json
-{
-  "task": "phone_interaction_event",
-  "event_metrics": {},
-  "profile": "earbuds_glasses",
-  "profile_metrics": {},
-  "profiles": [],
-  "labels": {}
-}
-```
-
-## Run on Real XRF V2
-
-1. Obtain the raw files listed above and place them under `data/raw/xrfv2` (or pass your own path).
-2. Prepare:
+## Real XRF V2 Run (Reproducible)
 
 ```bash
-xrfv2-edge-tal inspect --adapter xrfv2 --data-root data/raw/xrfv2 --list-modalities
-xrfv2-edge-tal prepare --adapter xrfv2 --data-root data/raw/xrfv2 --output-dir data/processed
+xrfv2-edge-tal inspect --adapter xrfv2 --data-root data/raw/xrfv2_kaggle --list-modalities --show-shapes
+xrfv2-edge-tal event-train --config configs/event_phone_interaction.yaml --adapter xrfv2 --data-root data/raw/xrfv2_kaggle --profile earbuds_glasses
+xrfv2-edge-tal event-eval --config configs/event_phone_interaction.yaml --adapter xrfv2 --data-root data/raw/xrfv2_kaggle --checkpoint runs/<train_run_id>/checkpoints/last.npz --profiles wifi_all,all_imu,earbuds_glasses,glasses_only
 ```
 
-3. Train and evaluate event detector:
+## Results: Deployment Profile Trade-Offs (Honest Story)
 
-```bash
-xrfv2-edge-tal event-train --config configs/event_phone_interaction.yaml --adapter xrfv2 --data-root data/raw/xrfv2 --profile earbuds_glasses
-xrfv2-edge-tal event-eval --config configs/event_phone_interaction.yaml --adapter xrfv2 --data-root data/raw/xrfv2 --profile earbuds_glasses --checkpoint runs/<train_run_id>/checkpoints/last.npz
-```
+This project uses a strict comparison ladder:
 
-4. Multi-profile comparison report:
+1. Upper bounds (`wifi_all`, `all_imu`)
+2. Product target (`earbuds_glasses`)
+3. Fallback (`glasses_only`)
 
-```bash
-xrfv2-edge-tal event-eval --config configs/event_phone_interaction.yaml --adapter xrfv2 --data-root data/raw/xrfv2 --profiles earbuds_glasses,glasses_only --checkpoint runs/<train_run_id>/checkpoints/last.npz
-```
+If upper bounds are non-trivial while product profiles drop, that is a valid and expected deployment trade-off, not hidden by unrealistic sensor assumptions.
 
-Artifacts are saved in `runs/<run_id>/...` including `metrics.json`, `profile_metrics.json`, and `profile_report.md`.
+### Local sanity run artifacts (subset run)
 
-## Results: Deployment Profiles
+Generated locally with:
 
-This track intentionally compares realistic deployment sensor sets:
-- `earbuds_glasses` is the product-target profile.
-- `glasses_only` is the robustness fallback profile.
-- `all_imu` is only a diagnostic upper bound and should not be treated as product quality.
+- train: `epochs=1`, `max_train_samples=512`
+- eval: `max_eval_samples=256`
 
-Why this matters:
-- without sensor restriction, metrics can be inflated by phone/watch signals unavailable at runtime
-- profile-wise reporting makes the deployment trade-off explicit
-- this repository differentiates by prioritizing realistic wearable constraints over benchmark-only gains
+Run IDs:
 
-Generate profile results directly:
+- Product-profile training: `runs/20260219_001446_64f8aa78/`
+- Product-profile eval: `runs/20260219_001647_71a55377/`
+- Upper-bound training (`wifi_all`): `runs/20260219_001728_84b0af13/`
+- Multi-profile eval from upper-bound model: `runs/20260219_001931_71a55377/`
 
-```bash
-xrfv2-edge-tal event-eval --config configs/event_phone_interaction.yaml --adapter xrfv2 --data-root data/raw/xrfv2 --checkpoint runs/<train_run_id>/checkpoints/last.npz --profiles earbuds_glasses,glasses_only
-```
+Read generated reports directly:
 
-This writes `runs/<eval_run_id>/profile_report.md` and `runs/<eval_run_id>/profile_metrics.json`.
+- `runs/<eval_run_id>/profile_report.md`
+- `runs/<eval_run_id>/profile_metrics.json`
 
-Result table format (generated by command above):
+Table schema (generated, not hand-written):
 
-| Profile | Sensors | Precision | Recall | F1 | FP/hour | p90 onset delay (s) | Notes |
+| Profile | Sensors | Onset F1 | Within F1 | Onset FP/hour | Within FP/hour | p90 onset delay (s) | Notes |
 |---|---|---:|---:|---:|---:|---:|---|
-| `earbuds_glasses` | earbuds, glasses | ... | ... | ... | ... | ... | default product target |
-| `glasses_only` | glasses | ... | ... | ... | ... | ... | fallback profile: expected drop; used for robustness |
 
-If you want a zero-data sanity check, run the same command with `--adapter dummy`. Treat that as a pipeline smoke check only, not XRF V2 performance.
+## Artifact Contract
 
-## Reproducibility Contract
+Each run writes reproducibility files under `runs/<run_id>/`:
 
-Every run writes:
 - `resolved_config.yaml`
 - `env.json`
 - `git.json`
@@ -151,14 +122,11 @@ Every run writes:
 - `metrics.json`
 - `dataset_fingerprint.json`
 - `benchmark.json`
-- `profile_metrics.json` (event multi-profile eval)
-- `profile_report.md` (event multi-profile eval)
+- `profile_metrics.json` (event eval)
+- `profile_report.md` (event eval)
+- `event_predictions.json` / `event_ground_truth.json`
 
-See `docs/artifact_contract.md`.
-
-## Additional Track (TAL)
-
-Full TAL baselines and historical TAL reports are kept as a secondary track. Archive docs are under `docs/tal/archive/`.
+See `docs/artifact_contract.md` for details.
 
 ## License
 
