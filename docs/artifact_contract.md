@@ -9,7 +9,7 @@ Each run must emit a self-contained artifact directory under `runs/`.
 - `git.json`: git metadata (commit hash, branch, dirty flag) when available.
 - `command.txt`: exact CLI command used to launch the run.
 - `metrics.json`: train/eval scalar metrics and summary values.
-- `dataset_fingerprint.json`: lightweight dataset fingerprint (file sizes + hashes + counts).
+- `dataset_fingerprint.json`: lightweight dataset fingerprint (file sizes + hash mode + counts).
 - `benchmark.json`: edge benchmarking metrics (params, model size, latency).
 
 ## Event-track files
@@ -20,6 +20,7 @@ Each run must emit a self-contained artifact directory under `runs/`.
 - `event_ground_truth.json`: GT event starts used for matching.
 - `calibration_report.md`: best threshold/cooldown per profile (`event-calibrate`).
 - `calibration_grid.json`: full threshold/cooldown sweep rows (`event-calibrate`).
+- `docs/event/results_latest.md`: latest experiment ledger and plan decisions (referenced from README).
 
 ## Directory shape
 
@@ -47,3 +48,4 @@ runs/
 - Metrics are machine-readable JSON.
 - Dataset fingerprint enables data drift detection.
 - Benchmark file captures edge constraints directly.
+- Latest cross-run comparison is documented in `docs/event/results_latest.md`.

@@ -1,75 +1,116 @@
-# Phone Interaction Event Spec (XRF V2)
+# Event Track Spec (Phone Interaction / Proxy)
 
 ## Goal
 
-Ship-able phone interaction event detection from wearable IMU, with:
-- default profile: earbuds + glasses
-- fallback profile: glasses-only
+Build an edge-oriented wearable event detector with deploy-style metrics and explicit sensor profiles.
 
-## Dataset Scope
+Primary product profile:
 
-- Source: XRF V2 multi-device IMU (phone/watch/earbuds/glasses)
-- Redistribution: not allowed in this repo
-- Expected raw files:
-  - `train_data.h5`
-  - `train_label.json`
-  - `test_data.h5`
-  - `test_label.json`
-  - `info.json`
+- `earbuds_glasses` = `airpods` + `imu_gl`
 
-## Positive Event Definition
+Fallback:
 
-A frame/segment is positive if action is either:
-- `Answer the phone`
-- `Use phone`
+- `glasses_only` = `imu_gl`
 
-Label resolution order:
-1. Parse `info.json` mapping keys (`labels`, `label_map`, `actions`, `action_map`, `id2label`, `label2id`)
-2. Match names to positive actions
-3. Fallback to explicit config `labels.positive_label_ids`
+## Dataset Contract
 
-## Model Output -> Trigger
+Expected raw files:
 
-1. Framewise probability for positive class
-2. Smoothing
-3. Threshold/hysteresis
-4. Cooldown suppression
-5. Emit trigger timestamps
+- `train_data.h5`
+- `train_label.json`
+- `test_data.h5`
+- `test_label.json`
+- `info.json`
 
-## Matching Rules
+No redistribution in this repository.
 
-`onset_strict`:
-- same sequence
-- `|pred_time - gt_start| <= onset_tolerance_s`
-- greedy one-to-one matching
+## Labeling Modes
 
-`within_segment`:
-- same sequence
-- `gt_start <= pred_time <= gt_end`
-- greedy one-to-one matching
+Configured under `labels.task_variant`:
 
-## Metrics
+- `phone_interaction`: positive = answering/using phone actions
+- `hand_to_head_proxy`: physically observable proxy set
 
-- Precision / Recall / F1
-- FP/hour
-- onset delay (mean, p50, p90)
-- edge metrics: params, checkpoint size MB, CPU latency median/p90
+Resolution order:
 
-Duration handling:
-- Prefer adapter-provided timestamps/duration
-- Else use `eval.frame_time_s` (default 0.02 seconds)
+1. `labels.positive_label_ids` if explicitly provided
+2. resolver from `info.json` action maps
+3. error with actionable fallback instructions
 
-## Deployment Profiles
+Label source modality is controlled by `labels.source_modality` (`imu` default, `merged_dedup` optional diagnostic).
 
-- `earbuds_glasses`: default production path
-- `glasses_only`: fallback profile
-- `all_imu`: diagnostic upper bound only
+## Event Modes
 
-## Artifacts
+Configured under `train.event_mode` and `eval.event_mode`:
 
-Event runs include standard contract plus:
+- `flat`:
+  - framewise classification over full sequence
+  - trigger extraction from frame probabilities
+- `hierarchical`:
+  - Stage A: candidate generation from `imu_gl` motion energy
+  - Stage B: classify candidate windows
+  - trigger-level filtering with threshold/cooldown/hysteresis
+
+Candidate configuration:
+
+- `energy_threshold`
+- `min_active_s`
+- `cooldown_s`
+- `pre_s`, `post_s`
+- `window_len_s`
+- `max_windows`
+
+## Trigger and Matching
+
+Trigger generation:
+
+1. optional smoothing
+2. threshold/hysteresis
+3. cooldown suppression
+4. emit timestamped triggers
+
+Metrics:
+
+- `onset_strict`: match if `|pred_time - gt_start| <= onset_tolerance_s`
+- `within_segment`: match if `gt_start <= pred_time <= gt_end`
+- `precision`, `recall`, `f1`
+- `fp_per_hour`
+- onset delay stats (`mean`, `p50`, `p90`)
+
+## Calibration Procedure
+
+`event-calibrate` sweeps threshold/cooldown grids and selects the best row under optional FP/hour budget.
+
+Recommended budgeted selection:
+
+- `--metric-mode within_segment`
+- `--fp-hour-budget 10`
+
+Outputs:
+
+- `calibration_grid.json`
+- `calibration_report.md`
+- selection summary in `metrics.json`
+
+## Edge and Reproducibility Outputs
+
+Each run stores:
+
+- `resolved_config.yaml`
+- `command.txt`
+- `env.json`
+- `git.json`
+- `metrics.json`
+- `dataset_fingerprint.json`
+- `benchmark.json`
+
+Evaluation/calibration additionally store:
+
 - `profile_metrics.json`
 - `profile_report.md`
 - `event_predictions.json`
 - `event_ground_truth.json`
-- `calibration_report.md` and `calibration_grid.json` for `event-calibrate`
+- `calibration_grid.json`
+- `calibration_report.md`
+
+See `docs/event/results_latest.md` for the latest run ledger and decisions.
