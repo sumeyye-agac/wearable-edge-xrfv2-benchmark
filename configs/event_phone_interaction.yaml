@@ -2,9 +2,10 @@ seed: 42
 
 data:
   profiles:
-    earbuds_glasses: ["earbuds", "glasses"]
-    glasses_only: ["glasses"]
-    all_imu: ["phone", "watch", "earbuds", "glasses"]
+    earbuds_glasses: ["airpods", "imu_gl"]
+    glasses_only: ["imu_gl"]
+    all_imu: ["airpods", "imu_gl", "imu_lh", "imu_rh", "imu_lp", "imu_rp"]
+    wifi_all: ["wifi", "airpods", "imu_gl", "imu_lh", "imu_rh", "imu_lp", "imu_rp"]
   default_profile: earbuds_glasses
 
 labels:

@@ -11,6 +11,7 @@ import h5py
 import numpy as np
 
 Segment = dict[str, float | int]
+_IMU_RECEIVER_NAMES = ("imu_gl", "imu_lh", "imu_rh", "imu_lp", "imu_rp")
 
 
 class RawAdapter(ABC):
@@ -131,7 +132,8 @@ class XRFV2H5Adapter(RawAdapter):
 
         info_path = self.data_root / "info.json"
         self.info = self._load_json(info_path)
-        self._modalities = self._infer_modalities(self.info)
+        self._base_modalities = self._infer_modalities(self.info)
+        self._modalities = self._expand_modalities(self._base_modalities)
 
         self._labels: dict[str, dict[str, list[Segment]]] = {
             "train": self._load_label_file(self.data_root / "train_label.json"),
@@ -166,15 +168,17 @@ class XRFV2H5Adapter(RawAdapter):
         h5_path = self.data_root / f"{split}_data.h5"
         x: dict[str, np.ndarray] = {}
         with h5py.File(h5_path, "r") as h5f:
-            for modality in self._modalities:
+            for modality in self._base_modalities:
                 dataset = self._resolve_modality_dataset(h5f, modality)
                 arr = np.asarray(dataset[idx], dtype=np.float32)
-                # Normalize modality tensors to [T, D] for baseline models.
-                if arr.ndim < 2:
-                    arr = arr.reshape(-1, 1)
-                elif arr.ndim > 2:
-                    arr = arr.reshape(arr.shape[0], -1)
-                x[modality] = arr
+                if modality == "imu":
+                    imu_t30 = self._normalize_imu_to_t30(arr)
+                    x["imu"] = imu_t30
+                    x.update(self._split_imu_receivers(imu_t30))
+                elif modality == "airpods":
+                    x["airpods"] = self._process_airpods(arr)
+                else:
+                    x[modality] = self._normalize_time_feature(arr)
 
         segments = self._labels[split].get(str(idx), [])
         meta = {"sample_id": str(idx), "source": split}
@@ -219,8 +223,85 @@ class XRFV2H5Adapter(RawAdapter):
 
     def _sample_count(self, h5_path: Path) -> int:
         with h5py.File(h5_path, "r") as h5f:
-            first = self._resolve_modality_dataset(h5f, self._modalities[0])
+            first = self._resolve_modality_dataset(h5f, self._base_modalities[0])
             return int(first.shape[0])
+
+    @staticmethod
+    def _expand_modalities(base_modalities: list[str]) -> list[str]:
+        out: list[str] = []
+        for modality in base_modalities:
+            if modality not in out:
+                out.append(modality)
+            if modality == "imu":
+                for receiver in _IMU_RECEIVER_NAMES:
+                    if receiver not in out:
+                        out.append(receiver)
+        return out
+
+    @staticmethod
+    def _normalize_time_feature(arr: np.ndarray) -> np.ndarray:
+        if arr.ndim == 1:
+            return arr.reshape(-1, 1).astype(np.float32, copy=False)
+        if arr.ndim == 2:
+            if arr.shape[0] < arr.shape[1] and arr.shape[0] in {9, 30}:
+                return arr.transpose(1, 0).astype(np.float32, copy=False)
+            return arr.astype(np.float32, copy=False)
+        if arr.ndim > 2:
+            return arr.reshape(arr.shape[0], -1).astype(np.float32, copy=False)
+        raise ValueError(f"Unsupported array ndim={arr.ndim}")
+
+    @staticmethod
+    def _normalize_imu_to_t30(arr: np.ndarray) -> np.ndarray:
+        if arr.ndim == 2:
+            if arr.shape[1] == 30:
+                return arr.astype(np.float32, copy=False)
+            if arr.shape[0] == 30:
+                return arr.transpose(1, 0).astype(np.float32, copy=False)
+            raise ValueError(f"Unsupported imu 2D shape {arr.shape}. Expected [T,30] or [30,T].")
+
+        if arr.ndim == 3:
+            if arr.shape[1:] == (5, 6):
+                imu_t56 = arr
+            elif arr.shape[0:2] == (5, 6):
+                imu_t56 = np.transpose(arr, (2, 0, 1))
+            elif arr.shape[0] == 5 and arr.shape[2] == 6:
+                imu_t56 = np.transpose(arr, (1, 0, 2))
+            elif arr.shape[1] == 6 and arr.shape[2] == 5:
+                imu_t56 = np.transpose(arr, (0, 2, 1))
+            elif arr.shape[0] == 6 and arr.shape[1] == 5:
+                imu_t56 = np.transpose(arr, (2, 1, 0))
+            elif arr.shape[0] == 6 and arr.shape[2] == 5:
+                imu_t56 = np.transpose(arr, (1, 2, 0))
+            else:
+                raise ValueError(
+                    f"Unsupported imu 3D shape {arr.shape}. "
+                    "Expected permutations of [T,5,6], [5,6,T], [5,T,6], [T,6,5], [6,5,T], [6,T,5]."
+                )
+            return imu_t56.reshape(imu_t56.shape[0], 30).astype(np.float32, copy=False)
+
+        raise ValueError(
+            f"Unsupported imu shape {arr.shape}. Expected [T,30] or permutations of [T,5,6]."
+        )
+
+    @staticmethod
+    def _split_imu_receivers(imu_t30: np.ndarray) -> dict[str, np.ndarray]:
+        if imu_t30.ndim != 2 or imu_t30.shape[1] != 30:
+            raise ValueError(f"Expected imu tensor [T,30], got {imu_t30.shape}")
+        out: dict[str, np.ndarray] = {}
+        for idx, key in enumerate(_IMU_RECEIVER_NAMES):
+            out[key] = imu_t30[:, idx * 6 : (idx + 1) * 6]
+        return out
+
+    @staticmethod
+    def _process_airpods(arr: np.ndarray) -> np.ndarray:
+        feat = XRFV2H5Adapter._normalize_time_feature(arr)
+        if feat.shape[1] >= 9:
+            return feat[:, 3:9].astype(np.float32, copy=False)
+        if feat.shape[1] == 6:
+            return feat.astype(np.float32, copy=False)
+        raise ValueError(
+            f"Unsupported airpods shape {arr.shape} -> {feat.shape}. Expected feature dim >= 9 or equal to 6."
+        )
 
     def _load_label_file(self, path: Path) -> dict[str, list[Segment]]:
         raw = json.loads(path.read_text(encoding="utf-8"))
