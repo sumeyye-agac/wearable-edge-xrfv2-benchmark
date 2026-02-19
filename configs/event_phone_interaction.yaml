@@ -13,6 +13,7 @@ labels:
     - "Answer the phone"
     - "Use phone"
   positive_label_ids: []
+  source_modality: "imu"
 
 model:
   name: tiny_tcn

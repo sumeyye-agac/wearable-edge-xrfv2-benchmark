@@ -84,6 +84,28 @@ def _resolve_positive_ids(
     )
 
 
+def _resolve_label_source_modality(config: dict[str, Any]) -> str:
+    labels_cfg = config.get("labels", {})
+    source = str(labels_cfg.get("source_modality", "imu")).strip()
+    return source or "imu"
+
+
+def _segments_for_sample(
+    adapter: DummyAdapter | XRFV2H5Adapter,
+    sample_id: str,
+    split: str,
+    fallback_segments: list[dict[str, float | int]],
+    source_modality: str,
+) -> list[dict[str, float | int]]:
+    if hasattr(adapter, "get_segments"):
+        return adapter.get_segments(  # type: ignore[attr-defined]
+            sample_id=sample_id,
+            split=split,
+            source_modality=source_modality,
+        )
+    return fallback_segments
+
+
 def _infer_input_dims(
     adapter: DummyAdapter | XRFV2H5Adapter,
     profile_name: str,
@@ -121,6 +143,7 @@ def train_event_main(
 
     profile_name = _resolve_profile_name(config=config, profile=profile)
     adapter = _adapter_from_name(adapter_name=adapter_name, data_root=data_root, seed=seed)
+    source_modality = _resolve_label_source_modality(config)
     input_dims = _infer_input_dims(adapter=adapter, profile_name=profile_name, config=config)
     positive_ids = _resolve_positive_ids(
         config=config, adapter_name=adapter_name, data_root=data_root
@@ -158,7 +181,14 @@ def train_event_main(
         t0 = time.perf_counter()
         losses: list[float] = []
         for sample_id in train_ids:
-            x, segments, _ = adapter.get_sample(sample_id, "train")
+            x, segments_raw, _ = adapter.get_sample(sample_id, "train")
+            segments = _segments_for_sample(
+                adapter=adapter,
+                sample_id=sample_id,
+                split="train",
+                fallback_segments=segments_raw,
+                source_modality=source_modality,
+            )
             x_sel = _select_modalities_for_profile(x, config=config, profile_name=profile_name)
             seq_len = int(next(iter(x_sel.values())).shape[0])
             target = build_binary_frame_labels(
@@ -231,6 +261,7 @@ def train_event_main(
             },
         },
         "labels": {
+            "source_modality": source_modality,
             "positive_label_ids": sorted(int(x) for x in positive_ids),
         },
         "checkpoint": str(checkpoint_path),

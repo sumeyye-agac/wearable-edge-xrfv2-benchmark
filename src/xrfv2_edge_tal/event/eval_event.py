@@ -81,6 +81,28 @@ def _resolve_positive_ids(config: dict[str, Any], adapter_name: str, data_root: 
     )
 
 
+def _resolve_label_source_modality(config: dict[str, Any]) -> str:
+    labels_cfg = config.get("labels", {})
+    source = str(labels_cfg.get("source_modality", "imu")).strip()
+    return source or "imu"
+
+
+def _segments_for_sample(
+    adapter: DummyAdapter | XRFV2H5Adapter,
+    sample_id: str,
+    split: str,
+    fallback_segments: list[dict[str, float | int]],
+    source_modality: str,
+) -> list[dict[str, float | int]]:
+    if hasattr(adapter, "get_segments"):
+        return adapter.get_segments(  # type: ignore[attr-defined]
+            sample_id=sample_id,
+            split=split,
+            source_modality=source_modality,
+        )
+    return fallback_segments
+
+
 def _select_modalities_for_profile(
     x: dict[str, np.ndarray],
     config: dict[str, Any],
@@ -147,6 +169,7 @@ def _evaluate_profile(
     profile_name: str,
     config: dict[str, Any],
     positive_ids: set[int],
+    source_modality: str,
 ) -> tuple[dict[str, Any], list[dict[str, Any]], list[dict[str, Any]], float]:
     eval_cfg = config.get("eval", {})
     trigger_cfg = eval_cfg.get("trigger", {})
@@ -170,7 +193,14 @@ def _evaluate_profile(
     duration_s = 0.0
 
     for sample_id in sample_ids:
-        x, segments, meta = adapter.get_sample(sample_id, split)
+        x, segments_raw, meta = adapter.get_sample(sample_id, split)
+        segments = _segments_for_sample(
+            adapter=adapter,
+            sample_id=sample_id,
+            split=split,
+            fallback_segments=segments_raw,
+            source_modality=source_modality,
+        )
         x_sel = _select_modalities_for_profile(x, config=config, profile_name=profile_name)
         seq_len = int(next(iter(x_sel.values())).shape[0])
 
@@ -291,6 +321,7 @@ def eval_event_main(
     positive_ids = _resolve_positive_ids(
         config=config, adapter_name=adapter_name, data_root=data_root
     )
+    source_modality = _resolve_label_source_modality(config)
 
     split = str(eval_cfg.get("split", "test"))
     selected_profiles = _resolve_profile_names(config=config, profile=profile, profiles=profiles)
@@ -312,6 +343,7 @@ def eval_event_main(
             profile_name=profile_name,
             config=config,
             positive_ids=positive_ids,
+            source_modality=source_modality,
         )
 
         sample_x, _, _ = adapter.get_sample(adapter.split_ids(split)[0], split)
@@ -345,6 +377,7 @@ def eval_event_main(
         "event_metrics": profile_metrics[primary],
         "profile_metrics": profile_metrics,
         "labels": {
+            "source_modality": source_modality,
             "positive_label_ids": sorted(int(x) for x in positive_ids),
         },
     }

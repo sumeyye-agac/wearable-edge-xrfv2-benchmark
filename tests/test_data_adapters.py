@@ -62,6 +62,27 @@ def _write_receiver_split_xrfv2_dir(root: Path) -> None:
     (root / "info.json").write_text(json.dumps(info), encoding="utf-8")
 
 
+def _write_duplicate_label_xrfv2_dir(root: Path) -> None:
+    root.mkdir(parents=True, exist_ok=True)
+    imu = np.random.randn(1, 16, 5, 6).astype(np.float32)
+    wifi = np.random.randn(1, 16, 3, 3, 30).astype(np.float32)
+    with h5py.File(root / "train_data.h5", "w") as f:
+        f.create_dataset("imu", data=imu)
+        f.create_dataset("wifi", data=wifi)
+    with h5py.File(root / "test_data.h5", "w") as f:
+        f.create_dataset("imu", data=imu)
+        f.create_dataset("wifi", data=wifi)
+
+    dup = {
+        "imu": {"0": [[0.1, 0.2, 16], [0.3, 0.4, 21]]},
+        "wifi": {"0": [[0.1, 0.2, 16], [0.3, 0.4, 21]]},
+    }
+    info = {"modality_list": ["imu", "wifi"]}
+    (root / "train_label.json").write_text(json.dumps(dup), encoding="utf-8")
+    (root / "test_label.json").write_text(json.dumps(dup), encoding="utf-8")
+    (root / "info.json").write_text(json.dumps(info), encoding="utf-8")
+
+
 def test_dummy_prepare_end_to_end(tmp_path: Path) -> None:
     adapter = DummyAdapter(seed=7, num_train=4, num_test=2)
     out = prepare_dataset(
@@ -144,3 +165,26 @@ def test_xrfv2_imu_normalization_variants() -> None:
     p56t = np.transpose(t56, (1, 2, 0))
     from_p56t = XRFV2H5Adapter._normalize_imu_to_t30(p56t)
     np.testing.assert_allclose(from_p56t, t56.reshape(12, 30))
+
+
+def test_xrfv2_label_source_modality_prevents_duplication(tmp_path: Path) -> None:
+    root = tmp_path / "xrfv2_dup"
+    _write_duplicate_label_xrfv2_dir(root)
+    adapter = XRFV2H5Adapter(root)
+
+    segs_imu = adapter.get_segments(sample_id="0", split="train", source_modality="imu")
+    segs_wifi = adapter.get_segments(sample_id="0", split="train", source_modality="wifi")
+    segs_merged = adapter.get_segments(sample_id="0", split="train", source_modality="merged_dedup")
+
+    assert len(segs_imu) == 2
+    assert len(segs_wifi) == 2
+    assert len(segs_merged) == 2
+
+
+def test_xrfv2_label_source_modality_unknown_is_actionable(tmp_path: Path) -> None:
+    root = tmp_path / "xrfv2_dup"
+    _write_duplicate_label_xrfv2_dir(root)
+    adapter = XRFV2H5Adapter(root)
+
+    with pytest.raises(ValueError, match="source_modality"):
+        adapter.get_segments(sample_id="0", split="train", source_modality="airpods")

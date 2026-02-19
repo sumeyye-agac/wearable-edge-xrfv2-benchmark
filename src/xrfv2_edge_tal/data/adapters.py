@@ -111,6 +111,13 @@ class DummyAdapter(RawAdapter):
         meta = {"subject_id": sample["subject_id"]}
         return x, segments, meta
 
+    def get_segments(
+        self, sample_id: str, split: str, source_modality: str = "imu"
+    ) -> list[Segment]:
+        del source_modality
+        _, segments, _ = self.get_sample(sample_id=sample_id, split=split)
+        return segments
+
     @staticmethod
     def _require_split(split: str) -> None:
         if split not in {"train", "test"}:
@@ -135,7 +142,7 @@ class XRFV2H5Adapter(RawAdapter):
         self._base_modalities = self._infer_modalities(self.info)
         self._modalities = self._expand_modalities(self._base_modalities)
 
-        self._labels: dict[str, dict[str, list[Segment]]] = {
+        self._labels_by_modality: dict[str, dict[str, dict[str, list[Segment]]]] = {
             "train": self._load_label_file(self.data_root / "train_label.json"),
             "test": self._load_label_file(self.data_root / "test_label.json"),
         }
@@ -180,9 +187,32 @@ class XRFV2H5Adapter(RawAdapter):
                 else:
                     x[modality] = self._normalize_time_feature(arr)
 
-        segments = self._labels[split].get(str(idx), [])
+        segments = self.get_segments(sample_id=str(idx), split=split, source_modality="imu")
         meta = {"sample_id": str(idx), "source": split}
         return x, [dict(s) for s in segments], meta
+
+    def get_segments(
+        self, sample_id: str, split: str, source_modality: str = "imu"
+    ) -> list[Segment]:
+        self._require_split(split)
+        by_modality = self._labels_by_modality[split]
+        sid = str(sample_id)
+
+        if source_modality == "merged_dedup":
+            merged: list[Segment] = []
+            for per_sample in by_modality.values():
+                merged.extend(per_sample.get(sid, []))
+            return self._dedup_segments(merged)
+
+        if source_modality in by_modality:
+            return [dict(seg) for seg in by_modality[source_modality].get(sid, [])]
+
+        available = ", ".join(sorted(by_modality.keys()))
+        raise ValueError(
+            f"source_modality='{source_modality}' not found in label file. "
+            f"Available source modalities: {available}. "
+            "Use labels.source_modality='imu' or 'merged_dedup'."
+        )
 
     def _validate_required_files(self) -> None:
         missing: list[str] = []
@@ -303,50 +333,73 @@ class XRFV2H5Adapter(RawAdapter):
             f"Unsupported airpods shape {arr.shape} -> {feat.shape}. Expected feature dim >= 9 or equal to 6."
         )
 
-    def _load_label_file(self, path: Path) -> dict[str, list[Segment]]:
+    def _load_label_file(self, path: Path) -> dict[str, dict[str, list[Segment]]]:
         raw = json.loads(path.read_text(encoding="utf-8"))
         return self._parse_label_payload(raw, path)
 
-    def _parse_label_payload(self, raw: Any, source_path: Path) -> dict[str, list[Segment]]:
+    def _parse_label_payload(
+        self, raw: Any, source_path: Path
+    ) -> dict[str, dict[str, list[Segment]]]:
+        # modality-specific schema:
+        # {"imu": {"0": [[...]]}, "wifi": {"0": [[...]]}, "imu_file_names": {...}}
         if isinstance(raw, dict):
-            # Modality-specific schema:
-            # {"imu": {"0": [[...], ...]}, "wifi": {...}, "imu_file_names": {"0": "..."}}
-            if raw and all(isinstance(v, dict) for v in raw.values()):
-                merged_by_sample: dict[str, list[Segment]] = {}
-                for top_key, per_sample in raw.items():
-                    if str(top_key).endswith("_file_names"):
-                        continue
-                    for sample_id, payload in per_sample.items():
-                        try:
-                            segs = self._parse_segments(payload, source_path)
-                        except ValueError:
-                            # Ignore non-segment payloads in mixed schemas.
-                            continue
-                        merged_by_sample.setdefault(str(sample_id), []).extend(segs)
-                if merged_by_sample:
-                    return merged_by_sample
+            modality_out: dict[str, dict[str, list[Segment]]] = {}
 
-            out: dict[str, list[Segment]] = {}
-            for key, value in raw.items():
-                if isinstance(value, dict):
-                    # modality-specific labels: merge all segment lists.
-                    merged: list[Segment] = []
-                    for maybe_segments in value.values():
-                        merged.extend(self._parse_segments(maybe_segments, source_path))
-                    out[str(key)] = merged
-                else:
-                    out[str(key)] = self._parse_segments(value, source_path)
-            return out
+            # direct sample mapping schema: {"0": [[...]], "1": [[...]]}
+            if raw and all(str(k).strip().lstrip("-").isdigit() for k in raw.keys()):
+                modality_out["imu"] = {
+                    str(sample_id): self._parse_segments(payload, source_path)
+                    for sample_id, payload in raw.items()
+                }
+                return modality_out
+
+            for top_key, value in raw.items():
+                name = str(top_key)
+                if name.endswith("_file_names"):
+                    continue
+                if not isinstance(value, dict):
+                    continue
+                if not value:
+                    modality_out[name] = {}
+                    continue
+
+                # per-sample mapping under modality
+                if all(str(k).strip().lstrip("-").isdigit() for k in value.keys()):
+                    modality_out[name] = {}
+                    for sample_id, payload in value.items():
+                        modality_out[name][str(sample_id)] = self._parse_segments(
+                            payload, source_path
+                        )
+                    continue
+
+                # fallback: nested map with sample IDs deeper in the structure
+                nested_samples: dict[str, list[Segment]] = {}
+                for inner_key, inner_payload in value.items():
+                    key = str(inner_key)
+                    if key.strip().lstrip("-").isdigit():
+                        nested_samples[key] = self._parse_segments(inner_payload, source_path)
+                if nested_samples:
+                    modality_out[name] = nested_samples
+
+            if modality_out:
+                return modality_out
+
+            found_keys = ", ".join(sorted(str(k) for k in raw.keys()))
+            raise ValueError(
+                f"Unsupported label dict schema in {source_path}. Found keys: {found_keys}. "
+                "Expected modality mapping such as {'imu': {'0': [[...]]}, 'wifi': {...}} "
+                "or direct sample mapping {'0': [[...]], ...}."
+            )
 
         if isinstance(raw, list):
-            out = {}
+            per_sample: dict[str, list[Segment]] = {}
             for idx, entry in enumerate(raw):
-                out[str(idx)] = self._parse_segments(entry, source_path)
-            return out
+                per_sample[str(idx)] = self._parse_segments(entry, source_path)
+            return {"imu": per_sample}
 
         raise ValueError(
             f"Unsupported label JSON structure in {source_path}. "
-            "Expected dict or list of segment entries."
+            f"Got type {type(raw)!r}; expected dict or list."
         )
 
     def _parse_segments(self, value: Any, source_path: Path) -> list[Segment]:
@@ -397,6 +450,28 @@ class XRFV2H5Adapter(RawAdapter):
         raise ValueError(
             f"Unsupported label item type {type(value)!r} in {source_path}; expected dict/list/tuple"
         )
+
+    @staticmethod
+    def _dedup_segments(segments: list[Segment], ndigits: int = 6) -> list[Segment]:
+        seen: set[tuple[float, float, int]] = set()
+        out: list[Segment] = []
+        for seg in segments:
+            key = (
+                round(float(seg["start"]), ndigits),
+                round(float(seg["end"]), ndigits),
+                int(seg["label"]),
+            )
+            if key in seen:
+                continue
+            seen.add(key)
+            out.append(
+                {
+                    "start": float(seg["start"]),
+                    "end": float(seg["end"]),
+                    "label": int(seg["label"]),
+                }
+            )
+        return out
 
     @staticmethod
     def _collect_h5_paths(group: h5py.Group, prefix: str = "") -> list[str]:
