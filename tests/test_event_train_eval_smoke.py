@@ -123,3 +123,38 @@ def test_event_train_with_distillation_smoke(tmp_path: Path) -> None:
     )
     metrics = json.loads((student_run / "metrics.json").read_text(encoding="utf-8"))
     assert metrics["distillation"]["enabled"] is True
+
+
+def test_event_eval_uses_checkpoint_tcn_shape_over_config(tmp_path: Path) -> None:
+    train_cfg = _event_config()
+    train_cfg["model"]["kernel_size"] = 7
+    train_cfg["model"]["tcn_layers"] = 2
+    train_cfg["train"]["max_train_samples"] = 3
+
+    train_run = train_event_main(
+        config=train_cfg,
+        data_root=str(tmp_path / "raw"),
+        adapter_name="dummy",
+        seed=21,
+        runs_dir=str(tmp_path / "runs"),
+        profile="earbuds_glasses",
+    )
+    ckpt = train_run / "checkpoints" / "last.npz"
+    assert ckpt.exists()
+
+    eval_cfg = _event_config()
+    eval_cfg["model"]["kernel_size"] = 3
+    eval_cfg["model"]["tcn_layers"] = 1
+
+    eval_run = eval_event_main(
+        checkpoint=str(ckpt),
+        config=eval_cfg,
+        data_root=str(tmp_path / "raw"),
+        adapter_name="dummy",
+        seed=21,
+        output_dir=str(tmp_path / "runs"),
+        profile="earbuds_glasses",
+        profiles=["earbuds_glasses"],
+    )
+    metrics = json.loads((eval_run / "metrics.json").read_text(encoding="utf-8"))
+    assert "profile_metrics" in metrics

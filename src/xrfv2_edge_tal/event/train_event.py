@@ -294,6 +294,7 @@ def train_event_main(
         "adapter": adapter_name,
         "backend": backend,
         "device": device,
+        "kernel_size": int(model_cfg.get("kernel_size", 5)),
         "tcn_layers": int(model_cfg.get("tcn_layers", 1)),
         "selected_profile": profile_name,
         "selected_modalities": config["data"]["profiles"][profile_name],

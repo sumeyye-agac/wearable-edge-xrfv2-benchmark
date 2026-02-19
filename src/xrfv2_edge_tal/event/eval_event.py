@@ -330,9 +330,9 @@ def eval_event_main(
         seed=seed,
         backend=str(metadata.get("backend", runtime_cfg.get("backend", "torch"))),
         device=str(metadata.get("device", runtime_cfg.get("device", "auto"))),
-        kernel_size=int(model_cfg.get("kernel_size", state.get("kernel_size", 5))),
+        kernel_size=int(state.get("kernel_size", model_cfg.get("kernel_size", 5))),
         tcn_layers=int(
-            model_cfg.get("tcn_layers", state.get("tcn_layers", metadata.get("tcn_layers", 1)))
+            state.get("tcn_layers", model_cfg.get("tcn_layers", metadata.get("tcn_layers", 1)))
         ),
     )
     model.load_state_dict(state)
