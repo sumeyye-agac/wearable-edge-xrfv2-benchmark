@@ -123,6 +123,13 @@ def _segment_start_seconds(seg: dict[str, Any], seq_len: int, frame_time_s: floa
     return float(raw_start * frame_time_s)
 
 
+def _segment_end_seconds(seg: dict[str, Any], seq_len: int, frame_time_s: float) -> float:
+    raw_end = float(seg["end"])
+    if raw_end <= 1.0:
+        raw_end *= seq_len
+    return float(raw_end * frame_time_s)
+
+
 def _sequence_duration_seconds(meta: dict[str, Any], seq_len: int, frame_time_s: float) -> float:
     if "duration_s" in meta:
         return float(meta["duration_s"])
@@ -237,6 +244,9 @@ def _evaluate_profile(
                         "start": _segment_start_seconds(
                             seg, seq_len=seq_len, frame_time_s=frame_time_s
                         ),
+                        "end": _segment_end_seconds(
+                            seg, seq_len=seq_len, frame_time_s=frame_time_s
+                        ),
                     }
                 )
 
@@ -269,17 +279,20 @@ def _render_profile_report(
     lines = [
         "# Event Profile Report",
         "",
-        "| Profile | Sensors | Precision | Recall | F1 | FP/hour | p90 onset delay (s) | Notes |",
+        "| Profile | Sensors | Onset F1 | Within F1 | Onset FP/hour | Within FP/hour | p90 onset delay (s) | Notes |",
         "|---|---|---:|---:|---:|---:|---:|---|",
     ]
     for profile_name, metrics in profile_metrics.items():
         sensors = ", ".join(config["data"]["profiles"][profile_name])
-        p90 = float(metrics.get("onset_delay_s", {}).get("p90", 0.0))
+        onset = metrics.get("onset_strict", {})
+        within = metrics.get("within_segment", {})
+        p90 = float(onset.get("onset_delay_s", {}).get("p90", 0.0))
         lines.append(
             "| "
             f"`{profile_name}` | {sensors} | "
-            f"{metrics['precision']:.4f} | {metrics['recall']:.4f} | {metrics['f1']:.4f} | "
-            f"{metrics['fp_per_hour']:.3f} | {p90:.3f} | {_profile_note(profile_name)} |"
+            f"{float(onset.get('f1', 0.0)):.4f} | {float(within.get('f1', 0.0)):.4f} | "
+            f"{float(onset.get('fp_per_hour', 0.0)):.3f} | {float(within.get('fp_per_hour', 0.0)):.3f} | "
+            f"{p90:.3f} | {_profile_note(profile_name)} |"
         )
     lines.append("")
     return "\n".join(lines)

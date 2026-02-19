@@ -28,10 +28,10 @@ def test_event_metrics_tp_fp_fn_and_delays() -> None:
         {"sample_id": "1", "time": 2.40},
     ]
     gts = [
-        {"sample_id": "0", "start": 1.00},
-        {"sample_id": "0", "start": 2.90},
-        {"sample_id": "1", "start": 2.00},
-        {"sample_id": "1", "start": 4.00},
+        {"sample_id": "0", "start": 1.00, "end": 1.40},
+        {"sample_id": "0", "start": 2.90, "end": 3.30},
+        {"sample_id": "1", "start": 2.00, "end": 2.30},
+        {"sample_id": "1", "start": 4.00, "end": 4.20},
     ]
 
     metrics = compute_event_metrics(
@@ -41,12 +41,20 @@ def test_event_metrics_tp_fp_fn_and_delays() -> None:
         onset_tolerance_s=0.35,
     )
 
-    # Matches: 1.05->1.00 and 3.20->2.90. Third pred is FP, one GT left as FN.
-    assert metrics["tp"] == 2
-    assert metrics["fp"] == 1
-    assert metrics["fn"] == 2
-    assert abs(metrics["precision"] - (2 / 3)) < 1e-6
-    assert abs(metrics["recall"] - 0.5) < 1e-6
-    assert abs(metrics["fp_per_hour"] - 1.0) < 1e-6
-    assert metrics["onset_delay_s"]["count"] == 2
-    assert metrics["onset_delay_s"]["p90"] >= metrics["onset_delay_s"]["p50"]
+    onset = metrics["onset_strict"]
+    within = metrics["within_segment"]
+
+    # Onset matches: 1.05->1.00 and 3.20->2.90. Third pred is FP, two GT remain FN.
+    assert onset["tp"] == 2
+    assert onset["fp"] == 1
+    assert onset["fn"] == 2
+    assert abs(onset["precision"] - (2 / 3)) < 1e-6
+    assert abs(onset["recall"] - 0.5) < 1e-6
+    assert abs(onset["fp_per_hour"] - 1.0) < 1e-6
+    assert onset["onset_delay_s"]["count"] == 2
+    assert onset["onset_delay_s"]["p90"] >= onset["onset_delay_s"]["p50"]
+
+    # Within-segment still misses sample_id=1 second event.
+    assert within["tp"] == 2
+    assert within["fp"] == 1
+    assert within["fn"] == 2

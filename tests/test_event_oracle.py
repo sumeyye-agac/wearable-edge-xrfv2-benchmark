@@ -64,15 +64,18 @@ def test_oracle_perfect_probs_yield_high_event_metrics() -> None:
         for start, end in gt_frames
     ]
 
-    onset = compute_event_metrics(
+    metrics = compute_event_metrics(
         predictions=predictions,
         ground_truth=gt_events,
         duration_s=float(seq_len * frame_time_s),
         onset_tolerance_s=0.04,
     )
+    onset = metrics["onset_strict"]
+    within_mode = metrics["within_segment"]
     within = _within_segment_match(predictions=predictions, gt_segments=gt_segments)
 
     assert onset["precision"] >= 0.99
     assert onset["recall"] >= 0.99
     assert onset["f1"] >= 0.99
+    assert within_mode["f1"] >= 0.99
     assert within["f1"] >= 0.99
