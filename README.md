@@ -73,8 +73,9 @@ xrfv2-edge-tal event-eval --config configs/event_phone_interaction.yaml --adapte
 
 ```bash
 xrfv2-edge-tal inspect --adapter xrfv2 --data-root data/raw/xrfv2_kaggle --list-modalities --show-shapes
-xrfv2-edge-tal event-train --config configs/event_phone_interaction.yaml --adapter xrfv2 --data-root data/raw/xrfv2_kaggle --profile earbuds_glasses
+xrfv2-edge-tal event-train --config configs/event_phone_interaction.yaml --adapter xrfv2 --data-root data/raw/xrfv2_kaggle --profile wifi_all --override train.epochs=1 --override train.max_train_samples=512
 xrfv2-edge-tal event-eval --config configs/event_phone_interaction.yaml --adapter xrfv2 --data-root data/raw/xrfv2_kaggle --checkpoint runs/<train_run_id>/checkpoints/last.npz --profiles wifi_all,all_imu,earbuds_glasses,glasses_only
+xrfv2-edge-tal event-calibrate --config configs/event_phone_interaction.yaml --adapter xrfv2 --data-root data/raw/xrfv2_kaggle --checkpoint runs/<train_run_id>/checkpoints/last.npz --profiles wifi_all,all_imu,earbuds_glasses,glasses_only --metric-mode within_segment
 ```
 
 ## Results: Deployment Profile Trade-Offs (Honest Story)
@@ -96,15 +97,20 @@ Generated locally with:
 
 Run IDs:
 
-- Product-profile training: `runs/20260219_001446_64f8aa78/`
-- Product-profile eval: `runs/20260219_001647_71a55377/`
-- Upper-bound training (`wifi_all`): `runs/20260219_001728_84b0af13/`
-- Multi-profile eval from upper-bound model: `runs/20260219_001931_71a55377/`
+- Upper-bound training (`all_imu`): `runs/20260219_010431_c80b482c/`
+- Upper-bound eval + profile report: `runs/20260219_010627_523202b4/`
+- Upper-bound training (`wifi_all`): `runs/20260219_011023_d4d46069/`
+- Multi-profile eval from `wifi_all` model: `runs/20260219_011222_523202b4/`
+- Calibration grid/report: `runs/20260219_011604_523202b4/`
+- Distilled student (`earbuds_glasses`) train: `runs/20260219_011614_8dc10974/`
+- Distilled student calibration: `runs/20260219_012010_a7c6fff7/`
 
 Read generated reports directly:
 
 - `runs/<eval_run_id>/profile_report.md`
 - `runs/<eval_run_id>/profile_metrics.json`
+- `runs/<calibration_run_id>/calibration_report.md`
+- `runs/<calibration_run_id>/calibration_grid.json`
 
 Table schema (generated, not hand-written):
 

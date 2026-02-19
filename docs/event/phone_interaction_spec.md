@@ -36,11 +36,16 @@ Label resolution order:
 4. Cooldown suppression
 5. Emit trigger timestamps
 
-## Matching Rule
+## Matching Rules
 
-Predicted trigger matches GT event if:
+`onset_strict`:
 - same sequence
 - `|pred_time - gt_start| <= onset_tolerance_s`
+- greedy one-to-one matching
+
+`within_segment`:
+- same sequence
+- `gt_start <= pred_time <= gt_end`
 - greedy one-to-one matching
 
 ## Metrics
@@ -67,3 +72,4 @@ Event runs include standard contract plus:
 - `profile_report.md`
 - `event_predictions.json`
 - `event_ground_truth.json`
+- `calibration_report.md` and `calibration_grid.json` for `event-calibrate`

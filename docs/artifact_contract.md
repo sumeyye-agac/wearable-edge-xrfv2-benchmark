@@ -18,6 +18,8 @@ Each run must emit a self-contained artifact directory under `runs/`.
 - `profile_report.md`: table report for profile comparison.
 - `event_predictions.json`: emitted triggers with score/time/profile.
 - `event_ground_truth.json`: GT event starts used for matching.
+- `calibration_report.md`: best threshold/cooldown per profile (`event-calibrate`).
+- `calibration_grid.json`: full threshold/cooldown sweep rows (`event-calibrate`).
 
 ## Directory shape
 
@@ -33,6 +35,8 @@ runs/
     benchmark.json
     profile_metrics.json
     profile_report.md
+    calibration_report.md
+    calibration_grid.json
     checkpoints/
       last.npz
 ```
