@@ -21,6 +21,22 @@ def test_trigger_cooldown_and_hysteresis() -> None:
     assert triggers[0]["frame"] == 2
 
 
+def test_trigger_min_active_seconds_filters_short_spikes() -> None:
+    probs = np.array([0.1, 0.8, 0.1, 0.9, 0.9, 0.9, 0.1], dtype=np.float32)
+    # frame_time_s=0.1 and min_active_s=0.3 requires 3 consecutive active frames.
+    triggers = frame_probs_to_event_triggers(
+        probs=probs,
+        frame_time_s=0.1,
+        threshold=0.7,
+        smoothing_window=1,
+        cooldown_s=0.0,
+        hysteresis=False,
+        min_active_s=0.3,
+    )
+    assert len(triggers) == 1
+    assert triggers[0]["frame"] == 3
+
+
 def test_event_metrics_tp_fp_fn_and_delays() -> None:
     preds = [
         {"sample_id": "0", "time": 1.05},

@@ -153,6 +153,7 @@ def calibrate_event_main(
     hysteresis = bool(trigger_cfg.get("hysteresis", False))
     default_threshold_off = float(trigger_cfg.get("threshold_off", 0.4))
     base_cooldown = float(trigger_cfg.get("cooldown_s", 0.75))
+    min_active_s = float(trigger_cfg.get("min_active_s", 0.0))
 
     thresholds = [float(x) for x in (thresholds if thresholds else _default_thresholds())]
     cooldowns = [float(x) for x in (cooldowns if cooldowns else _default_cooldowns(base_cooldown))]
@@ -225,6 +226,7 @@ def calibrate_event_main(
                         cooldown_s=float(cooldown_s),
                         hysteresis=hysteresis,
                         threshold_off=threshold_off,
+                        min_active_s=min_active_s,
                     )
                     for trigger in triggers:
                         predictions.append(

@@ -51,6 +51,7 @@ def frame_probs_to_event_triggers(
     cooldown_s: float = 1.0,
     hysteresis: bool = False,
     threshold_off: float | None = None,
+    min_active_s: float = 0.0,
 ) -> list[dict[str, Any]]:
     """Convert framewise probabilities into discrete event triggers."""
     if frame_time_s <= 0:
@@ -69,6 +70,20 @@ def frame_probs_to_event_triggers(
         active = threshold_with_hysteresis(smoothed, threshold_on=threshold, threshold_off=off)
     else:
         active = smoothed >= threshold
+    min_active_frames = int(np.ceil(max(0.0, float(min_active_s)) / frame_time_s))
+    if min_active_frames > 1:
+        filtered = np.zeros_like(active, dtype=bool)
+        run_start = -1
+        for idx, state in enumerate(active):
+            if state and run_start < 0:
+                run_start = idx
+            elif (not state) and run_start >= 0:
+                if idx - run_start >= min_active_frames:
+                    filtered[run_start:idx] = True
+                run_start = -1
+        if run_start >= 0 and active.shape[0] - run_start >= min_active_frames:
+            filtered[run_start:] = True
+        active = filtered
 
     rising_edges: list[int] = []
     prev = False

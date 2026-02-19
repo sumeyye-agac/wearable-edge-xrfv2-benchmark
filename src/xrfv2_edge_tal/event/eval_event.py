@@ -193,6 +193,7 @@ def _evaluate_profile(
     cooldown_s = float(trigger_cfg.get("cooldown_s", 0.75))
     hysteresis = bool(trigger_cfg.get("hysteresis", False))
     threshold_off = trigger_cfg.get("threshold_off", None)
+    min_active_s = float(trigger_cfg.get("min_active_s", 0.0))
 
     sample_ids = adapter.split_ids(split)
     if max_eval_samples > 0:
@@ -228,6 +229,7 @@ def _evaluate_profile(
             cooldown_s=cooldown_s,
             hysteresis=hysteresis,
             threshold_off=float(threshold_off) if threshold_off is not None else None,
+            min_active_s=min_active_s,
         )
         for item in triggers:
             predictions.append(
