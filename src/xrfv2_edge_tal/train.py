@@ -143,10 +143,16 @@ def _save_dataset_fingerprint(
     run_dir: Path, data_root: str, adapter: DummyAdapter | XRFV2H5Adapter
 ) -> None:
     manifest = []
+    adapter_modalities = sorted(list(adapter.modalities))
     for split in ["train", "test"]:
         for sample_id in adapter.split_ids(split):
-            x, _, _ = adapter.get_sample(sample_id, split)
-            manifest.append({"sample_id": sample_id, "modalities": sorted(list(x.keys()))})
+            manifest.append(
+                {
+                    "sample_id": sample_id,
+                    "source_split": split,
+                    "modalities": adapter_modalities,
+                }
+            )
     fp = compute_dataset_fingerprint(data_root=data_root, manifest=manifest)
     (run_dir / "dataset_fingerprint.json").write_text(
         json.dumps(fp, indent=2, sort_keys=True) + "\n", encoding="utf-8"

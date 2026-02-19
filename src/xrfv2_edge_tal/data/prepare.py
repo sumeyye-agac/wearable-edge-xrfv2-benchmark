@@ -45,18 +45,42 @@ def _sha256_file(path: Path) -> str:
     return digest.hexdigest()
 
 
+def _sampled_sha256_file(path: Path, sample_bytes: int = 1024 * 1024) -> str:
+    digest = hashlib.sha256()
+    size = path.stat().st_size
+    with path.open("rb") as f:
+        head = f.read(sample_bytes)
+        digest.update(head)
+        if size > sample_bytes:
+            tail_size = min(sample_bytes, size)
+            f.seek(-tail_size, 2)
+            digest.update(f.read(tail_size))
+    return digest.hexdigest()
+
+
 def compute_dataset_fingerprint(
-    data_root: str | Path, manifest: list[dict[str, Any]]
+    data_root: str | Path,
+    manifest: list[dict[str, Any]],
+    *,
+    max_full_hash_bytes: int = 256 * 1024 * 1024,
 ) -> dict[str, Any]:
     root = Path(data_root)
     files = []
     for child in sorted(root.glob("*")):
         if child.is_file():
+            size_bytes = int(child.stat().st_size)
+            if size_bytes <= max_full_hash_bytes:
+                hash_mode = "full_sha256"
+                sha256 = _sha256_file(child)
+            else:
+                hash_mode = "sampled_sha256_head_tail_1mb"
+                sha256 = _sampled_sha256_file(child)
             files.append(
                 {
                     "name": child.name,
-                    "size_bytes": child.stat().st_size,
-                    "sha256": _sha256_file(child),
+                    "size_bytes": size_bytes,
+                    "sha256": sha256,
+                    "hash_mode": hash_mode,
                 }
             )
 
@@ -65,6 +89,7 @@ def compute_dataset_fingerprint(
         "data_root": str(root),
         "num_samples": len(manifest),
         "modalities": modalities,
+        "max_full_hash_bytes": int(max_full_hash_bytes),
         "files": files,
     }
 

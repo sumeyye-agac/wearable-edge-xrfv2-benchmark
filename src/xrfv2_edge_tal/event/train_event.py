@@ -407,10 +407,16 @@ def train_event_main(
     )
 
     manifest = []
+    adapter_modalities = sorted(list(adapter.modalities))
     for split in ["train", "test"]:
         for sample_id in adapter.split_ids(split):
-            x, _, _ = adapter.get_sample(sample_id, split)
-            manifest.append({"sample_id": sample_id, "modalities": sorted(x.keys())})
+            manifest.append(
+                {
+                    "sample_id": sample_id,
+                    "source_split": split,
+                    "modalities": adapter_modalities,
+                }
+            )
     fingerprint = compute_dataset_fingerprint(data_root=data_root, manifest=manifest)
 
     metrics = {
