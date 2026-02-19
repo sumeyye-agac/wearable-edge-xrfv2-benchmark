@@ -73,14 +73,30 @@ def _resolve_profile_names(
 
 
 def _resolve_positive_ids(config: dict[str, Any], adapter_name: str, data_root: str) -> set[int]:
+    def _parse_explicit_ids(raw: Any) -> set[int]:
+        if raw is None:
+            return set()
+        if isinstance(raw, str):
+            parts = [p.strip() for p in raw.replace(";", ",").split(",")]
+            return {int(p) for p in parts if p}
+        if isinstance(raw, (list, tuple, set)):
+            out: set[int] = set()
+            for item in raw:
+                if isinstance(item, str) and "," in item:
+                    out |= _parse_explicit_ids(item)
+                elif str(item).strip():
+                    out.add(int(item))
+            return out
+        return {int(raw)}
+
     labels_cfg = config.get("labels", {})
     task_variant = str(labels_cfg.get("task_variant", "phone_interaction")).strip().lower()
-    explicit = labels_cfg.get("positive_label_ids", [])
+    explicit = _parse_explicit_ids(labels_cfg.get("positive_label_ids", []))
     names = labels_cfg.get("positive_action_names", ["Answer the phone", "Use phone"])
     proxy_keywords = labels_cfg.get("proxy_keywords", ["head", "face", "phone", "ear", "glasses"])
 
     if explicit:
-        return {int(x) for x in explicit}
+        return explicit
     if adapter_name == "dummy":
         return {1, 2} if task_variant == "phone_interaction" else {1, 2, 3}
     if task_variant == "hand_to_head_proxy":
