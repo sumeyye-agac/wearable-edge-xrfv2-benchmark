@@ -53,3 +53,40 @@ def test_build_windows_handles_missing_glasses() -> None:
         window_len_s=1.0,
     )
     assert windows == []
+
+
+def test_build_windows_prioritizes_gt_when_window_budget_is_tight() -> None:
+    t = 120
+    x = {
+        "imu_gl": np.zeros((t, 6), dtype=np.float32),
+        "airpods": np.zeros((t, 6), dtype=np.float32),
+    }
+    # Negative motion candidate early in the sequence.
+    x["imu_gl"][5:20, 3:6] = 2.5
+    # Positive segment later (with stronger motion).
+    x["imu_gl"][75:95, 3:6] = 3.0
+    segments = [{"label": 9, "start": 0.65, "end": 0.78}]
+
+    windows = build_windows_for_sample(
+        x_dict=x,
+        segments=segments,
+        positive_ids={9},
+        profile_modalities=["airpods", "imu_gl"],
+        frame_time_s=0.02,
+        candidate_cfg={
+            "energy_threshold": 1.0,
+            "min_active_s": 0.1,
+            "cooldown_s": 0.1,
+            "pre_s": 0.0,
+            "post_s": 0.0,
+            "window_len_s": 1.0,
+            "overlap_min_s": 0.1,
+            "max_windows": 1,
+            "include_gt_windows": True,
+        },
+        window_len_s=1.0,
+        sample_id="s1",
+    )
+
+    assert len(windows) == 1
+    assert int(windows[0]["y"]) == 1

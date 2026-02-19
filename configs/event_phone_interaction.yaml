@@ -45,9 +45,11 @@ train:
     include_gt_windows: true
   hard_negative_mining:
     enabled: false
+    start_epoch: 1
     subset_samples: 256
     score_threshold: 0.6
     weight: 2.0
+    max_windows_per_sample: 2
   distillation:
     enabled: false
     teacher_checkpoint: ""

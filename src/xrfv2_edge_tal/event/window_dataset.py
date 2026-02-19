@@ -131,14 +131,15 @@ def build_windows_for_sample(
         )
         expanded.append((s, e))
 
-    windows: list[tuple[int, int]] = []
+    candidate_windows: list[tuple[int, int]] = []
     seen_starts: set[int] = set()
     for start, end in expanded:
         s, e = _fixed_window(start, end, seq_len=seq_len, w_frames=w_frames)
         if s not in seen_starts:
-            windows.append((s, e))
+            candidate_windows.append((s, e))
             seen_starts.add(s)
 
+    gt_windows: list[tuple[int, int]] = []
     if bool(cfg["include_gt_windows"]):
         for seg in segments:
             if int(seg["label"]) not in positive_ids:
@@ -146,9 +147,10 @@ def build_windows_for_sample(
             gs, ge = _segment_to_frames(seg, seq_len=seq_len)
             s, e = _fixed_window(gs, ge, seq_len=seq_len, w_frames=w_frames)
             if s not in seen_starts:
-                windows.append((s, e))
+                gt_windows.append((s, e))
                 seen_starts.add(s)
 
+    windows = list(gt_windows) + list(candidate_windows)
     max_windows = max(1, int(cfg["max_windows"]))
     windows = windows[:max_windows]
 

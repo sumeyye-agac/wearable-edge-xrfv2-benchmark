@@ -121,6 +121,21 @@ def _resolve_hierarchical_cfg(config: dict[str, Any]) -> dict[str, Any]:
     return default_candidate_config(raw)
 
 
+def _resolve_hard_negative_cfg(config: dict[str, Any]) -> dict[str, Any]:
+    train_cfg = config.get("train", {})
+    raw = train_cfg.get("hard_negative_mining", {})
+    if not isinstance(raw, dict):
+        raw = {}
+    return {
+        "enabled": bool(raw.get("enabled", False)),
+        "start_epoch": max(1, int(raw.get("start_epoch", 1))),
+        "subset_samples": max(0, int(raw.get("subset_samples", 256))),
+        "score_threshold": float(raw.get("score_threshold", 0.6)),
+        "weight": float(raw.get("weight", 2.0)),
+        "max_windows_per_sample": max(1, int(raw.get("max_windows_per_sample", 2))),
+    }
+
+
 def _slice_or_pad_window(arr: np.ndarray, start: int, end: int, target_len: int) -> np.ndarray:
     clip_start = max(0, int(start))
     clip_end = min(int(arr.shape[0]), int(end))
@@ -184,6 +199,79 @@ def _load_model_from_checkpoint(checkpoint: str, seed: int):
     return model, metadata
 
 
+def _mine_hard_negative_windows(
+    *,
+    model: Any,
+    adapter: DummyAdapter | XRFV2H5Adapter,
+    sample_ids: list[str],
+    config: dict[str, Any],
+    profile_name: str,
+    source_modality: str,
+    positive_ids: set[int],
+    frame_time_s: float,
+    window_len_s: float,
+    hierarchical_cfg: dict[str, Any],
+    hard_negative_cfg: dict[str, Any],
+    norm_enabled: bool,
+    norm_clip: float,
+) -> dict[str, list[dict[str, Any]]]:
+    if not bool(hard_negative_cfg["enabled"]):
+        return {}
+
+    subset = int(hard_negative_cfg["subset_samples"])
+    mining_ids = sample_ids[:subset] if subset > 0 else list(sample_ids)
+
+    candidate_cfg = dict(hierarchical_cfg)
+    candidate_cfg["include_gt_windows"] = False
+    candidate_cfg["max_windows"] = int(hard_negative_cfg["max_windows_per_sample"])
+    score_threshold = float(hard_negative_cfg["score_threshold"])
+    weight = max(1.0, float(hard_negative_cfg["weight"]))
+
+    hard_by_sample: dict[str, list[dict[str, Any]]] = {}
+    for sample_id in mining_ids:
+        x, segments_raw, _ = adapter.get_sample(sample_id, "train")
+        segments = _segments_for_sample(
+            adapter=adapter,
+            sample_id=sample_id,
+            split="train",
+            fallback_segments=segments_raw,
+            source_modality=source_modality,
+        )
+        x_sel = _select_modalities_for_profile(x, config=config, profile_name=profile_name)
+        x_sel = normalize_modalities(x_sel, enabled=norm_enabled, clip=norm_clip)
+        windows = build_windows_for_sample(
+            x_dict=x_sel,
+            segments=segments,
+            positive_ids=positive_ids,
+            profile_modalities=sorted(list(x_sel.keys())),
+            frame_time_s=frame_time_s,
+            candidate_cfg=candidate_cfg,
+            window_len_s=window_len_s,
+            sample_id=sample_id,
+        )
+
+        mined: list[dict[str, Any]] = []
+        for window in windows:
+            if int(window["y"]) != 0:
+                continue
+            x_win = normalize_modalities(
+                dict(window["x_window"]),
+                enabled=norm_enabled,
+                clip=norm_clip,
+            )
+            score = float(np.mean(model.predict_proba(x_win)[:, 1]))
+            if score < score_threshold:
+                continue
+            mined_window = dict(window)
+            mined_window["weight"] = weight
+            mined_window["score"] = score
+            mined.append(mined_window)
+        if mined:
+            hard_by_sample[sample_id] = mined[: int(hard_negative_cfg["max_windows_per_sample"])]
+
+    return hard_by_sample
+
+
 def train_event_main(
     config: dict[str, Any],
     data_root: str,
@@ -211,7 +299,8 @@ def train_event_main(
     loss_cfg = train_cfg.get("loss", {})
     focal_gamma = float(loss_cfg.get("focal_gamma", 0.0))
     background_weight = float(loss_cfg.get("background_weight", 1.0))
-    class_balance = bool(loss_cfg.get("class_balance", False))
+    class_balance = bool(loss_cfg.get("class_balance", train_cfg.get("class_balance", False)))
+    hard_negative_cfg = _resolve_hard_negative_cfg(config)
     distill_cfg = train_cfg.get("distillation", {})
     distill_enabled = bool(distill_cfg.get("enabled", False))
     distill_weight = float(distill_cfg.get("weight", 0.3))
@@ -268,6 +357,10 @@ def train_event_main(
     total_steps = 0
     total_windows = 0
     total_positive_windows = 0
+    hard_negative_pool: dict[str, list[dict[str, Any]]] = {}
+    hard_negative_windows_last = 0
+    hard_negative_weighted_steps = 0
+    hard_negative_history: list[dict[str, float | int]] = []
     for epoch in range(1, epochs + 1):
         t0 = time.perf_counter()
         losses: list[float] = []
@@ -327,6 +420,9 @@ def train_event_main(
                 window_len_s=window_len_s,
                 sample_id=sample_id,
             )
+            extra_hard = hard_negative_pool.get(sample_id, [])
+            if extra_hard:
+                windows = list(windows) + [dict(w) for w in extra_hard]
             total_windows += len(windows)
             total_positive_windows += int(sum(int(w["y"]) for w in windows))
             for window in windows:
@@ -359,21 +455,25 @@ def train_event_main(
                         )
                         teacher_probs = teacher_model.predict_proba(x_teacher_window)
 
-                loss = model.train_step(
-                    x_dict=x_win,
-                    target=target,
-                    lr=lr,
-                    modality_dropout_p=modality_dropout_p,
-                    teacher_probs=teacher_probs,
-                    distill_weight=distill_weight if teacher_probs is not None else 0.0,
-                    temperature=distill_temperature,
-                    focal_gamma=focal_gamma,
-                    background_label=background_label,
-                    background_weight=background_weight,
-                    class_balance=class_balance,
-                )
-                losses.append(float(loss))
-                total_steps += 1
+                repeat = max(1, int(round(float(window.get("weight", 1.0)))))
+                if float(window.get("weight", 1.0)) > 1.0:
+                    hard_negative_weighted_steps += repeat
+                for _ in range(repeat):
+                    loss = model.train_step(
+                        x_dict=x_win,
+                        target=target,
+                        lr=lr,
+                        modality_dropout_p=modality_dropout_p,
+                        teacher_probs=teacher_probs,
+                        distill_weight=distill_weight if teacher_probs is not None else 0.0,
+                        temperature=distill_temperature,
+                        focal_gamma=focal_gamma,
+                        background_label=background_label,
+                        background_weight=background_weight,
+                        class_balance=class_balance,
+                    )
+                    losses.append(float(loss))
+                    total_steps += 1
 
         epoch_s = float(time.perf_counter() - t0)
         history.append(
@@ -384,6 +484,36 @@ def train_event_main(
                 "epoch_seconds": epoch_s,
             }
         )
+        if (
+            event_mode == "hierarchical"
+            and bool(hard_negative_cfg["enabled"])
+            and epoch >= int(hard_negative_cfg["start_epoch"])
+            and epoch < epochs
+        ):
+            mine_t0 = time.perf_counter()
+            hard_negative_pool = _mine_hard_negative_windows(
+                model=model,
+                adapter=adapter,
+                sample_ids=train_ids,
+                config=config,
+                profile_name=profile_name,
+                source_modality=source_modality,
+                positive_ids=positive_ids,
+                frame_time_s=frame_time_s,
+                window_len_s=window_len_s,
+                hierarchical_cfg=hierarchical_cfg,
+                hard_negative_cfg=hard_negative_cfg,
+                norm_enabled=norm_enabled,
+                norm_clip=norm_clip,
+            )
+            hard_negative_windows_last = int(sum(len(v) for v in hard_negative_pool.values()))
+            hard_negative_history.append(
+                {
+                    "epoch": epoch,
+                    "windows": hard_negative_windows_last,
+                    "seconds": float(time.perf_counter() - mine_t0),
+                }
+            )
 
     metadata = {
         "task": "phone_interaction_event",
@@ -434,6 +564,13 @@ def train_event_main(
                 "candidate_cfg": hierarchical_cfg,
                 "num_windows": int(total_windows),
                 "num_positive_windows": int(total_positive_windows),
+                "hard_negative_mining": {
+                    "enabled": bool(hard_negative_cfg["enabled"]),
+                    "config": hard_negative_cfg,
+                    "windows_last_epoch": int(hard_negative_windows_last),
+                    "weighted_steps": int(hard_negative_weighted_steps),
+                    "history": hard_negative_history,
+                },
             }
             if event_mode == "hierarchical"
             else {},
