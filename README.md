@@ -107,6 +107,12 @@ Current status from full runs in this branch:
     - `earbuds_glasses`: `within_segment F1=0.0000`
     - `glasses_only`: `within_segment F1=0.0064`
   - Unbudgeted best (for context only): `within_segment F1=0.0976` at `FP/hour=151.10`
+- Trigger scoring update (`score_mode=max`, `trigger_time=peak`) on the same Stage 4 checkpoint:
+  - Eval: `runs/20260225_232318_c595a4a2`
+  - Calibrate: `runs/20260225_232426_c644e669`
+  - Budgeted (`FP/hour<=10`) best:
+    - `earbuds_glasses`: `within_segment F1=0.0285` (TP=14, FP/hour=6.995)
+    - `glasses_only`: `within_segment F1=0.0108` (TP=5, FP/hour=4.807)
 
 Interpretation: current lightweight pipelines are not yet deploy-ready under the target FP/hour budget for this sensor restriction.
 

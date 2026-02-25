@@ -59,6 +59,8 @@ Candidate configuration:
 - `pre_s`, `post_s`
 - `window_len_s`
 - `max_windows`
+- `score_mode` (`mean|max|p90|p95`) for candidate confidence
+- `trigger_time` (`start|peak`) for emitted trigger timestamp
 
 ## Trigger and Matching
 
