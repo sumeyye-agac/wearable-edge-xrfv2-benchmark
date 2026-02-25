@@ -89,6 +89,8 @@ eval:
     overlap_min_s: 0.20
     max_windows: 24
     include_gt_windows: false
+    score_mode: max
+    trigger_time: peak
   trigger:
     threshold: 0.55
     smoothing_window: 5

@@ -132,7 +132,22 @@ def _resolve_hierarchical_cfg(config: dict[str, Any]) -> dict[str, float | int]:
     raw = eval_cfg.get("hierarchical", {})
     if not isinstance(raw, dict):
         raw = {}
-    return default_candidate_config(raw)
+    cfg = dict(default_candidate_config(raw))
+    score_mode = str(raw.get("score_mode", "mean")).strip().lower()
+    if score_mode not in {"mean", "max", "p90", "p95"}:
+        raise ValueError(
+            f"Unsupported eval.hierarchical.score_mode={score_mode}. "
+            "Expected one of: mean|max|p90|p95."
+        )
+    trigger_time = str(raw.get("trigger_time", "start")).strip().lower()
+    if trigger_time not in {"start", "peak"}:
+        raise ValueError(
+            f"Unsupported eval.hierarchical.trigger_time={trigger_time}. "
+            "Expected one of: start|peak."
+        )
+    cfg["score_mode"] = score_mode
+    cfg["trigger_time"] = trigger_time
+    return cfg
 
 
 def _segments_for_sample(
@@ -274,6 +289,27 @@ def _hierarchical_candidates(
     return out[:max_windows]
 
 
+def _candidate_score(pos_probs: np.ndarray, score_mode: str) -> float:
+    x = np.asarray(pos_probs, dtype=np.float32)
+    if x.ndim != 1 or x.size == 0:
+        return 0.0
+    mode = str(score_mode).strip().lower()
+    if mode == "max":
+        return float(np.max(x))
+    if mode == "p90":
+        return float(np.percentile(x, 90))
+    if mode == "p95":
+        return float(np.percentile(x, 95))
+    return float(np.mean(x))
+
+
+def _candidate_frame(start_frame: int, pos_probs: np.ndarray, trigger_time: str) -> int:
+    mode = str(trigger_time).strip().lower()
+    if mode == "peak":
+        return int(start_frame + int(np.argmax(np.asarray(pos_probs, dtype=np.float32))))
+    return int(start_frame)
+
+
 def _latency_stats(
     model: Any,
     x_dict: dict[str, np.ndarray],
@@ -375,12 +411,21 @@ def _evaluate_profile(
                     raise ValueError(
                         f"Expected model output [W,2+] for event task, got {probs.shape}"
                     )
-                score = float(np.mean(probs[:, 1]))
+                pos_probs = np.asarray(probs[:, 1], dtype=np.float32)
+                frame_idx = _candidate_frame(
+                    start_frame=int(start_frame),
+                    pos_probs=pos_probs,
+                    trigger_time=str(hierarchical_cfg["trigger_time"]),
+                )
+                score = _candidate_score(
+                    pos_probs=pos_probs,
+                    score_mode=str(hierarchical_cfg["score_mode"]),
+                )
                 scored.append(
                     {
-                        "time": float(start_frame * frame_time_s),
+                        "time": float(frame_idx * frame_time_s),
                         "score": score,
-                        "frame": int(start_frame),
+                        "frame": int(frame_idx),
                     }
                 )
             triggers = filter_trigger_candidates(

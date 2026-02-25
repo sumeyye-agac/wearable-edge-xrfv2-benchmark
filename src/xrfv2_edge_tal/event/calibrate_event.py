@@ -14,6 +14,8 @@ from xrfv2_edge_tal.artifacts import create_run_dir, write_metrics
 from xrfv2_edge_tal.checkpoint import load_checkpoint
 from xrfv2_edge_tal.event.eval_event import (
     _adapter_from_name,
+    _candidate_frame,
+    _candidate_score,
     _hierarchical_candidates,
     _resolve_event_mode,
     _resolve_hierarchical_cfg,
@@ -229,11 +231,20 @@ def calibrate_event_main(
                     probs = model.predict_proba(x_window)
                     if probs.ndim != 2 or probs.shape[1] < 2:
                         raise ValueError(f"Expected model output [W,2+], got {probs.shape}")
+                    pos_probs = np.asarray(probs[:, 1], dtype=np.float32)
+                    frame_idx = _candidate_frame(
+                        start_frame=int(start_frame),
+                        pos_probs=pos_probs,
+                        trigger_time=str(hierarchical_cfg["trigger_time"]),
+                    )
                     scored.append(
                         {
-                            "time": float(start_frame * frame_time_s),
-                            "score": float(np.mean(probs[:, 1])),
-                            "frame": int(start_frame),
+                            "time": float(frame_idx * frame_time_s),
+                            "score": _candidate_score(
+                                pos_probs=pos_probs,
+                                score_mode=str(hierarchical_cfg["score_mode"]),
+                            ),
+                            "frame": int(frame_idx),
                         }
                     )
                 cached_streams.append((sample_id, scored, seq_len))
