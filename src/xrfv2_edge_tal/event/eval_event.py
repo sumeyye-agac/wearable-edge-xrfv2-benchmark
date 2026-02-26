@@ -145,8 +145,15 @@ def _resolve_hierarchical_cfg(config: dict[str, Any]) -> dict[str, float | int]:
             f"Unsupported eval.hierarchical.trigger_time={trigger_time}. "
             "Expected one of: start|peak."
         )
+    score_normalization = str(raw.get("score_normalization", "none")).strip().lower()
+    if score_normalization not in {"none", "center_median", "center_mean", "zscore"}:
+        raise ValueError(
+            f"Unsupported eval.hierarchical.score_normalization={score_normalization}. "
+            "Expected one of: none|center_median|center_mean|zscore."
+        )
     cfg["score_mode"] = score_mode
     cfg["trigger_time"] = trigger_time
+    cfg["score_normalization"] = score_normalization
     return cfg
 
 
@@ -310,6 +317,39 @@ def _candidate_frame(start_frame: int, pos_probs: np.ndarray, trigger_time: str)
     return int(start_frame)
 
 
+def _normalize_candidate_scores(
+    candidates: list[dict[str, float | int]],
+    score_normalization: str,
+) -> list[dict[str, float | int]]:
+    mode = str(score_normalization).strip().lower()
+    if mode == "none" or not candidates:
+        return candidates
+
+    scores = np.asarray([float(item["score"]) for item in candidates], dtype=np.float32)
+    if mode == "center_median":
+        adjusted = scores - float(np.median(scores))
+    elif mode == "center_mean":
+        adjusted = scores - float(np.mean(scores))
+    elif mode == "zscore":
+        std = float(np.std(scores))
+        if std < 1e-6:
+            adjusted = scores - float(np.mean(scores))
+        else:
+            adjusted = (scores - float(np.mean(scores))) / std
+    else:
+        raise ValueError(
+            f"Unsupported score_normalization={score_normalization}. "
+            "Expected: none|center_median|center_mean|zscore."
+        )
+
+    out: list[dict[str, float | int]] = []
+    for item, score in zip(candidates, adjusted, strict=False):
+        row = dict(item)
+        row["score"] = float(score)
+        out.append(row)
+    return out
+
+
 def _latency_stats(
     model: Any,
     x_dict: dict[str, np.ndarray],
@@ -428,6 +468,10 @@ def _evaluate_profile(
                         "frame": int(frame_idx),
                     }
                 )
+            scored = _normalize_candidate_scores(
+                scored,
+                score_normalization=str(hierarchical_cfg["score_normalization"]),
+            )
             triggers = filter_trigger_candidates(
                 candidates=scored,
                 threshold=threshold,

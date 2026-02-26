@@ -146,7 +146,18 @@ def _resolve_hierarchical_cfg(config: dict[str, Any]) -> dict[str, Any]:
     raw = train_cfg.get("hierarchical", {})
     if not isinstance(raw, dict):
         raw = {}
-    return default_candidate_config(raw)
+    cfg = dict(default_candidate_config(raw))
+    supervision = str(raw.get("window_label_mode", "pooled_max")).strip().lower()
+    if supervision not in {"frame_dense", "pooled_max", "pooled_mean"}:
+        raise ValueError(
+            f"Unsupported train.hierarchical.window_label_mode={supervision}. "
+            "Expected: frame_dense|pooled_max|pooled_mean."
+        )
+    cfg["window_label_mode"] = supervision
+    cfg["positive_repeat"] = max(1, int(raw.get("positive_repeat", 1)))
+    max_negative_ratio = float(raw.get("max_negative_ratio", 0.0))
+    cfg["max_negative_ratio"] = max(0.0, max_negative_ratio)
+    return cfg
 
 
 def _resolve_hard_negative_cfg(config: dict[str, Any]) -> dict[str, Any]:
@@ -162,6 +173,34 @@ def _resolve_hard_negative_cfg(config: dict[str, Any]) -> dict[str, Any]:
         "weight": float(raw.get("weight", 2.0)),
         "max_windows_per_sample": max(1, int(raw.get("max_windows_per_sample", 2))),
     }
+
+
+def _rebalance_windows(
+    windows: list[dict[str, Any]],
+    *,
+    max_negative_ratio: float,
+    rng: np.random.Generator,
+) -> tuple[list[dict[str, Any]], int, int, int]:
+    if max_negative_ratio <= 0.0:
+        positives = int(sum(int(w.get("y", 0)) == 1 for w in windows))
+        negatives = int(len(windows) - positives)
+        return windows, positives, negatives, negatives
+
+    positives = [w for w in windows if int(w.get("y", 0)) == 1]
+    negatives = [w for w in windows if int(w.get("y", 0)) != 1]
+    original_negatives = len(negatives)
+    if positives and negatives:
+        neg_cap = max(1, int(np.floor(float(max_negative_ratio) * len(positives))))
+        if len(negatives) > neg_cap:
+            order = np.arange(len(negatives))
+            rng.shuffle(order)
+            negatives = [negatives[int(i)] for i in order[:neg_cap]]
+    merged = list(positives) + list(negatives)
+    if merged:
+        order = np.arange(len(merged))
+        rng.shuffle(order)
+        merged = [merged[int(i)] for i in order]
+    return merged, len(positives), original_negatives, len(negatives)
 
 
 def _slice_or_pad_window(arr: np.ndarray, start: int, end: int, target_len: int) -> np.ndarray:
@@ -385,10 +424,14 @@ def train_event_main(
     total_steps = 0
     total_windows = 0
     total_positive_windows = 0
+    total_negative_windows = 0
+    total_negative_windows_kept = 0
+    total_positive_weighted_steps = 0
     hard_negative_pool: dict[str, list[dict[str, Any]]] = {}
     hard_negative_windows_last = 0
     hard_negative_weighted_steps = 0
     hard_negative_history: list[dict[str, float | int]] = []
+    rng = np.random.default_rng(seed)
     for epoch in range(1, epochs + 1):
         t0 = time.perf_counter()
         losses: list[float] = []
@@ -451,8 +494,15 @@ def train_event_main(
             extra_hard = hard_negative_pool.get(sample_id, [])
             if extra_hard:
                 windows = list(windows) + [dict(w) for w in extra_hard]
+            windows, num_pos, num_neg_before, num_neg_after = _rebalance_windows(
+                windows,
+                max_negative_ratio=float(hierarchical_cfg.get("max_negative_ratio", 0.0)),
+                rng=rng,
+            )
             total_windows += len(windows)
-            total_positive_windows += int(sum(int(w["y"]) for w in windows))
+            total_positive_windows += int(num_pos)
+            total_negative_windows += int(num_neg_before)
+            total_negative_windows_kept += int(num_neg_after)
             for window in windows:
                 x_win = normalize_modalities(
                     dict(window["x_window"]),
@@ -461,7 +511,16 @@ def train_event_main(
                 )
                 win_len = int(next(iter(x_win.values())).shape[0])
                 label = int(window["y"])
-                target = np.full((win_len,), label, dtype=np.int64)
+                label_mode = str(hierarchical_cfg.get("window_label_mode", "pooled_max"))
+                if label_mode == "frame_dense":
+                    target = np.full((win_len,), label, dtype=np.int64)
+                    window_pooling = None
+                elif label_mode == "pooled_mean":
+                    target = np.asarray([label], dtype=np.int64)
+                    window_pooling = "mean"
+                else:
+                    target = np.asarray([label], dtype=np.int64)
+                    window_pooling = "max"
 
                 teacher_probs = None
                 if teacher_model is not None and teacher_modalities:
@@ -484,6 +543,9 @@ def train_event_main(
                         teacher_probs = teacher_model.predict_proba(x_teacher_window)
 
                 repeat = max(1, int(round(float(window.get("weight", 1.0)))))
+                if label == 1:
+                    repeat *= max(1, int(hierarchical_cfg.get("positive_repeat", 1)))
+                    total_positive_weighted_steps += repeat
                 if float(window.get("weight", 1.0)) > 1.0:
                     hard_negative_weighted_steps += repeat
                 for _ in range(repeat):
@@ -499,6 +561,7 @@ def train_event_main(
                         background_label=background_label,
                         background_weight=background_weight,
                         class_balance=class_balance,
+                        window_pooling=window_pooling,
                     )
                     losses.append(float(loss))
                     total_steps += 1
@@ -590,8 +653,14 @@ def train_event_main(
             "hierarchical": {
                 "window_len_s": window_len_s,
                 "candidate_cfg": hierarchical_cfg,
+                "window_label_mode": str(hierarchical_cfg.get("window_label_mode", "pooled_max")),
+                "positive_repeat": int(hierarchical_cfg.get("positive_repeat", 1)),
+                "max_negative_ratio": float(hierarchical_cfg.get("max_negative_ratio", 0.0)),
                 "num_windows": int(total_windows),
                 "num_positive_windows": int(total_positive_windows),
+                "num_negative_windows": int(total_negative_windows),
+                "num_negative_windows_kept": int(total_negative_windows_kept),
+                "num_positive_weighted_steps": int(total_positive_weighted_steps),
                 "hard_negative_mining": {
                     "enabled": bool(hard_negative_cfg["enabled"]),
                     "config": hard_negative_cfg,

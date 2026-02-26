@@ -33,7 +33,7 @@ checkpoints/
 artifacts/
 logs/
 exports/
-models/
+/models/
 *.pt
 *.pth
 *.ckpt

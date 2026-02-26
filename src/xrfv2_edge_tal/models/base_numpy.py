@@ -104,12 +104,29 @@ class BaseNumpyFrameModel:
         background_label: int = 0,
         background_weight: float = 1.0,
         class_balance: bool = False,
+        window_pooling: str | None = None,
     ) -> float:
         logits, _, fused = self.forward(x_dict, training=True, modality_dropout_p=modality_dropout_p)
+        if window_pooling is not None and int(logits.shape[0]) > 1:
+            mode = str(window_pooling).strip().lower()
+            if mode == "max":
+                logits = np.max(logits, axis=0, keepdims=True)
+                fused = np.mean(fused, axis=0, keepdims=True)
+            elif mode == "mean":
+                logits = np.mean(logits, axis=0, keepdims=True)
+                fused = np.mean(fused, axis=0, keepdims=True)
+            else:
+                raise ValueError(
+                    f"Unsupported window_pooling={window_pooling}. Expected: max|mean."
+                )
         probs = softmax(logits)
 
         t = target.astype(np.int64)
         t = np.clip(t, 0, self.num_classes - 1)
+        if len(t) != logits.shape[0]:
+            if len(t) == 0:
+                raise ValueError("target cannot be empty")
+            t = t[:1]
 
         n = max(len(t), 1)
         ce = -np.log(np.maximum(probs[np.arange(len(t)), t], 1e-12))

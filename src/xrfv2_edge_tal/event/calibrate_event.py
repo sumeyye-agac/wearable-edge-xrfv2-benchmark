@@ -17,6 +17,7 @@ from xrfv2_edge_tal.event.eval_event import (
     _candidate_frame,
     _candidate_score,
     _hierarchical_candidates,
+    _normalize_candidate_scores,
     _resolve_event_mode,
     _resolve_hierarchical_cfg,
     _resolve_label_source_modality,
@@ -247,6 +248,10 @@ def calibrate_event_main(
                             "frame": int(frame_idx),
                         }
                     )
+                scored = _normalize_candidate_scores(
+                    scored,
+                    score_normalization=str(hierarchical_cfg["score_normalization"]),
+                )
                 cached_streams.append((sample_id, scored, seq_len))
             duration_s += _sequence_duration_seconds(
                 meta=meta, seq_len=seq_len, frame_time_s=frame_time_s

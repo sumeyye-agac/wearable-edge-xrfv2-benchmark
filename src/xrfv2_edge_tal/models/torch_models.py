@@ -154,11 +154,26 @@ class TorchBaseFrameModel:
         background_label: int = 0,
         background_weight: float = 1.0,
         class_balance: bool = False,
+        window_pooling: str | None = None,
     ) -> float:
         logits, _, _ = self.forward(x_dict, training=True, modality_dropout_p=modality_dropout_p)
+        if window_pooling is not None and int(logits.shape[0]) > 1:
+            mode = str(window_pooling).strip().lower()
+            if mode == "max":
+                logits = torch.max(logits, dim=0, keepdim=True).values
+            elif mode == "mean":
+                logits = torch.mean(logits, dim=0, keepdim=True)
+            else:
+                raise ValueError(
+                    f"Unsupported window_pooling={window_pooling}. Expected: max|mean."
+                )
 
         target_t = torch.as_tensor(target, device=self.device, dtype=torch.long)
         target_t = torch.clamp(target_t, min=0, max=self.num_classes - 1)
+        if int(target_t.numel()) != int(logits.shape[0]):
+            if int(target_t.numel()) == 0:
+                raise ValueError("target cannot be empty")
+            target_t = target_t[:1]
         ce_per = F.cross_entropy(logits, target_t, reduction="none")
 
         weights = torch.ones_like(ce_per)
