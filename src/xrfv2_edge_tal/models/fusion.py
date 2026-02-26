@@ -9,7 +9,9 @@ import numpy as np
 ArrayDict = dict[str, np.ndarray]
 
 
-def modality_dropout_mask(modalities: list[str], p: float, rng: np.random.Generator) -> dict[str, bool]:
+def modality_dropout_mask(
+    modalities: list[str], p: float, rng: np.random.Generator
+) -> dict[str, bool]:
     if p <= 0.0:
         return {m: True for m in modalities}
     if p >= 1.0:

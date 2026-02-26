@@ -25,7 +25,9 @@ class TinyTransformer(BaseNumpyFrameModel):
         hidden_dim: int = 32,
         seed: int = 42,
     ) -> None:
-        super().__init__(input_dims=input_dims, num_classes=num_classes, hidden_dim=hidden_dim, seed=seed)
+        super().__init__(
+            input_dims=input_dims, num_classes=num_classes, hidden_dim=hidden_dim, seed=seed
+        )
         self.wq = self.rng.normal(0.0, 0.1, size=(hidden_dim, hidden_dim)).astype(np.float32)
         self.wk = self.rng.normal(0.0, 0.1, size=(hidden_dim, hidden_dim)).astype(np.float32)
         self.wv = self.rng.normal(0.0, 0.1, size=(hidden_dim, hidden_dim)).astype(np.float32)

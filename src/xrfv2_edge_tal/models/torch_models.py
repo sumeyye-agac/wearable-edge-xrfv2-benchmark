@@ -248,8 +248,12 @@ class TorchBaseFrameModel:
 
     def load_state_dict(self, state: dict[str, Any]) -> None:
         with torch.no_grad():
-            self.cls_w.copy_(torch.as_tensor(state["cls_w"], device=self.device, dtype=torch.float32))
-            self.cls_b.copy_(torch.as_tensor(state["cls_b"], device=self.device, dtype=torch.float32))
+            self.cls_w.copy_(
+                torch.as_tensor(state["cls_w"], device=self.device, dtype=torch.float32)
+            )
+            self.cls_b.copy_(
+                torch.as_tensor(state["cls_b"], device=self.device, dtype=torch.float32)
+            )
 
             for modality in self.modalities:
                 self.proj_w[modality].copy_(
@@ -268,7 +272,9 @@ class TorchBaseFrameModel:
             for modality in self.modalities:
                 if modality in gate_logits:
                     self.gate_logits[modality].copy_(
-                        torch.as_tensor(gate_logits[modality], device=self.device, dtype=torch.float32)
+                        torch.as_tensor(
+                            gate_logits[modality], device=self.device, dtype=torch.float32
+                        )
                     )
 
         self._load_extra_state(state)
@@ -362,7 +368,9 @@ class TorchTinyTCN(TorchBaseFrameModel):
                 key = f"dw_kernel::{modality}::{idx}"
                 if key in state:
                     with torch.no_grad():
-                        kernel.copy_(torch.as_tensor(state[key], device=self.device, dtype=torch.float32))
+                        kernel.copy_(
+                            torch.as_tensor(state[key], device=self.device, dtype=torch.float32)
+                        )
 
 
 class TorchTinyTransformer(TorchBaseFrameModel):

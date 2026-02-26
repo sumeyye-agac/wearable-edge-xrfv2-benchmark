@@ -47,7 +47,9 @@ class BaseNumpyFrameModel:
         self.proj_w: dict[str, np.ndarray] = {}
         self.proj_b: dict[str, np.ndarray] = {}
         for modality, dim in self.input_dims.items():
-            self.proj_w[modality] = self.rng.normal(0.0, 0.1, size=(dim, hidden_dim)).astype(np.float32)
+            self.proj_w[modality] = self.rng.normal(0.0, 0.1, size=(dim, hidden_dim)).astype(
+                np.float32
+            )
             self.proj_b[modality] = np.zeros((hidden_dim,), dtype=np.float32)
 
         self.cls_w = self.rng.normal(0.0, 0.1, size=(hidden_dim, num_classes)).astype(np.float32)
@@ -70,7 +72,9 @@ class BaseNumpyFrameModel:
                 continue
             feats[modality] = self._encode_modality(x_dict[modality], modality)
 
-        fused, weights = self.fusion.fuse(feats, training=training, dropout_p=modality_dropout_p, rng=self.rng)
+        fused, weights = self.fusion.fuse(
+            feats, training=training, dropout_p=modality_dropout_p, rng=self.rng
+        )
         return fused, weights
 
     def forward(
@@ -106,7 +110,9 @@ class BaseNumpyFrameModel:
         class_balance: bool = False,
         window_pooling: str | None = None,
     ) -> float:
-        logits, _, fused = self.forward(x_dict, training=True, modality_dropout_p=modality_dropout_p)
+        logits, _, fused = self.forward(
+            x_dict, training=True, modality_dropout_p=modality_dropout_p
+        )
         if window_pooling is not None and int(logits.shape[0]) > 1:
             mode = str(window_pooling).strip().lower()
             if mode == "max":
@@ -163,7 +169,9 @@ class BaseNumpyFrameModel:
             student_temp = softmax(logits / max(temperature, 1e-6))
             log_student = np.log(np.maximum(student_temp, 1e-12))
             log_teacher = np.log(np.maximum(t_probs, 1e-12))
-            kd_loss = float(np.mean(np.sum(t_probs * (log_teacher - log_student), axis=1)) * (temperature**2))
+            kd_loss = float(
+                np.mean(np.sum(t_probs * (log_teacher - log_student), axis=1)) * (temperature**2)
+            )
 
             grad_kd = (student_temp - t_probs) / n
             grad = (1.0 - w) * grad_ce + w * grad_kd

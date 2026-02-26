@@ -18,7 +18,9 @@ class TinyTCN(BaseNumpyFrameModel):
         kernel_size: int = 5,
         seed: int = 42,
     ) -> None:
-        super().__init__(input_dims=input_dims, num_classes=num_classes, hidden_dim=hidden_dim, seed=seed)
+        super().__init__(
+            input_dims=input_dims, num_classes=num_classes, hidden_dim=hidden_dim, seed=seed
+        )
         self.kernel_size = int(kernel_size)
 
     def _encode_modality(self, x: np.ndarray, modality: str) -> np.ndarray:
