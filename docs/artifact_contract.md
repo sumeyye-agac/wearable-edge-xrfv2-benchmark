@@ -15,6 +15,7 @@ Each run must emit a self-contained artifact directory under `runs/`.
 ## Event-track files
 
 - `profile_metrics.json`: profile-wise metrics map for `earbuds_glasses`, `glasses_only`, optional `all_imu`.
+  Includes `onset_strict`, `within_segment`, and `sample_presence` metric blocks.
 - `profile_report.md`: table report for profile comparison.
 - `event_predictions.json`: emitted triggers with score/time/profile.
 - `event_ground_truth.json`: GT event starts used for matching.

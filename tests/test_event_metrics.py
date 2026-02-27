@@ -59,6 +59,7 @@ def test_event_metrics_tp_fp_fn_and_delays() -> None:
 
     onset = metrics["onset_strict"]
     within = metrics["within_segment"]
+    sample = metrics["sample_presence"]
 
     # Onset matches: 1.05->1.00 and 3.20->2.90. Third pred is FP, two GT remain FN.
     assert onset["tp"] == 2
@@ -74,6 +75,14 @@ def test_event_metrics_tp_fp_fn_and_delays() -> None:
     assert within["tp"] == 2
     assert within["fp"] == 1
     assert within["fn"] == 2
+
+    # Sample-level presence:
+    # sample 0: predicted + gt => TP
+    # sample 1: predicted + gt => TP
+    assert sample["tp"] == 2
+    assert sample["fp"] == 0
+    assert sample["fn"] == 0
+    assert abs(sample["f1"] - 1.0) < 1e-6
 
 
 def test_filter_trigger_candidates_threshold_and_cooldown() -> None:

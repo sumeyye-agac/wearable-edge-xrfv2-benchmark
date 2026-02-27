@@ -540,19 +540,21 @@ def _render_profile_report(
         "",
         f"- Event mode: `{event_mode}`",
         "",
-        "| Profile | Sensors | Onset F1 | Within F1 | Onset FP/hour | Within FP/hour | p90 onset delay (s) | Notes |",
-        "|---|---|---:|---:|---:|---:|---:|---|",
+        "| Profile | Sensors | Onset F1 | Within F1 | Sample F1 | Onset FP/hour | Within FP/hour | Sample FP/hour | p90 onset delay (s) | Notes |",
+        "|---|---|---:|---:|---:|---:|---:|---:|---:|---|",
     ]
     for profile_name, metrics in profile_metrics.items():
         sensors = ", ".join(config["data"]["profiles"][profile_name])
         onset = metrics.get("onset_strict", {})
         within = metrics.get("within_segment", {})
+        sample = metrics.get("sample_presence", {})
         p90 = float(onset.get("onset_delay_s", {}).get("p90", 0.0))
         lines.append(
             "| "
             f"`{profile_name}` | {sensors} | "
-            f"{float(onset.get('f1', 0.0)):.4f} | {float(within.get('f1', 0.0)):.4f} | "
+            f"{float(onset.get('f1', 0.0)):.4f} | {float(within.get('f1', 0.0)):.4f} | {float(sample.get('f1', 0.0)):.4f} | "
             f"{float(onset.get('fp_per_hour', 0.0)):.3f} | {float(within.get('fp_per_hour', 0.0)):.3f} | "
+            f"{float(sample.get('fp_per_hour', 0.0)):.3f} | "
             f"{p90:.3f} | {_profile_note(profile_name)} |"
         )
     lines.append("")

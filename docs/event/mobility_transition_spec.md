@@ -1,61 +1,56 @@
-# Mobility Transition Event Spec (Deploy Track)
+# Mobility Transition Deploy Spec
 
-## Why this track exists
+## Deploy objective
 
-Phone semantics from head-mounted IMU are hard under strict false-alarm budgets.
-For deployment, we need a physically observable target with stable edge operating points.
+This deploy track uses a simplified, product-friendly objective:
 
-This track defines a deploy-oriented event:
+- Event class: `Walking (24)` OR `Standing Up (26)` OR `Lying Down (27)`
+- Sensors: earbuds + glasses (`earbuds_glasses`) with glasses-only fallback
+- Primary metric: `sample_presence` F1 under `FP/hour <= 10`
 
-- positive labels: `24 (Walking)`, `26 (Standing Up)`, `27 (Lying Down)`
-- sensors: earbuds + glasses by default, glasses-only fallback
-- objective: maximize `within_segment` F1 under `FP/hour <= 10`
+`sample_presence` means:
 
-## Input profiles
+- Each sample window is binary (`event present` / `not present`).
+- Prediction is positive if at least one trigger is emitted in that sample.
 
-- `earbuds_glasses` (default): `airpods + imu_gl`
-- `glasses_only` (fallback): `imu_gl`
-- `all_imu`, `wifi_all`: diagnostic only
+This is intentionally simpler than strict trigger localization and better aligned with deploy gates.
 
-## Model + pipeline
+## Pipeline
 
-- model: tiny TCN
-- event mode: hierarchical
-- candidate generation: glasses motion energy
-- candidate scoring: max positive probability in candidate window
-- trigger timing: peak frame in candidate window
-- calibration grid: threshold + cooldown sweep per profile
+- TinyTCN, hierarchical candidate generation from glasses IMU energy
+- Candidate scoring: max positive probability
+- Trigger timing: peak frame
+- Calibration: threshold + cooldown sweep by profile
 
-## Metrics for go/no-go
+## Latest reproducible operating point
 
-Primary:
+Checkpoint:
 
-- `within_segment` precision / recall / F1
-- `FP/hour`
+- `runs/20260227_000037_4d7e71f5/checkpoints/last.npz`
 
-Secondary:
+Calibration run:
 
-- `onset_strict` metrics (more sensitive to onset ambiguity)
-- edge metrics (params, checkpoint size, CPU latency)
+- `runs/20260227_010805_f46605ff`
 
-## Latest reproducible operating points (2048-eval benchmark)
+Best budgeted point (`FP/hour <= 10`):
 
-From `docs/event/results_latest.md`:
+- threshold: `0.835`
+- cooldown: `0.0s`
+- `sample_presence` F1: `0.6109`
+- `sample_presence` FP/hour: `9.91`
 
-- product (`earbuds_glasses`): threshold `0.67`, cooldown `16.0s`
-- fallback (`glasses_only`): threshold `0.88`, cooldown `32.0s`
-
-## Reproduction
+## Commands
 
 ```bash
 xrfv2-edge-tal event-train \
-  --config configs/event_mobility_transition.yaml \
-  --adapter xrfv2 --data-root data/raw/xrfv2_kaggle --profile earbuds_glasses
+  --config configs/event_presence_mobility.yaml \
+  --adapter xrfv2 --data-root data/raw/xrfv2_kaggle \
+  --profile glasses_only
 
 xrfv2-edge-tal event-calibrate \
-  --config configs/event_mobility_transition.yaml \
+  --config configs/event_presence_mobility.yaml \
   --adapter xrfv2 --data-root data/raw/xrfv2_kaggle \
   --checkpoint runs/<train_run>/checkpoints/last.npz \
   --profiles earbuds_glasses,glasses_only \
-  --metric-mode within_segment --fp-hour-budget 10
+  --metric-mode sample_presence --fp-hour-budget 10
 ```

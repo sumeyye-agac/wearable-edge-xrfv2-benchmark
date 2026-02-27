@@ -165,6 +165,12 @@ def compute_event_metrics(
         within_fn += fn_w
         within_delays.extend(delays_w)
 
+    pred_sequences = set(pred_by_seq.keys())
+    gt_sequences = set(gt_by_seq.keys())
+    sample_tp = int(len(pred_sequences & gt_sequences))
+    sample_fp = int(len(pred_sequences - gt_sequences))
+    sample_fn = int(len(gt_sequences - pred_sequences))
+
     return {
         "duration_s": float(duration_s),
         "onset_strict": _mode_payload(
@@ -180,6 +186,14 @@ def compute_event_metrics(
             fp=within_fp,
             fn=within_fn,
             delays=within_delays,
+            duration_s=duration_s,
+            onset_tolerance_s=None,
+        ),
+        "sample_presence": _mode_payload(
+            tp=sample_tp,
+            fp=sample_fp,
+            fn=sample_fn,
+            delays=[],
             duration_s=duration_s,
             onset_tolerance_s=None,
         ),

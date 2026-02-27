@@ -87,3 +87,33 @@ def test_event_calibrate_smoke(tmp_path: Path) -> None:
     best = metrics["calibration"]["best_by_profile"]
     assert "earbuds_glasses" in best
     assert "all_imu" in best
+
+
+def test_event_calibrate_sample_presence_mode(tmp_path: Path) -> None:
+    cfg = _config()
+    train_run = train_event_main(
+        config=cfg,
+        data_root=str(tmp_path / "raw"),
+        adapter_name="dummy",
+        seed=11,
+        runs_dir=str(tmp_path / "runs"),
+        profile="earbuds_glasses",
+    )
+    ckpt = train_run / "checkpoints" / "last.npz"
+    assert ckpt.exists()
+
+    cal_run = calibrate_event_main(
+        checkpoint=str(ckpt),
+        config=cfg,
+        data_root=str(tmp_path / "raw"),
+        adapter_name="dummy",
+        seed=11,
+        output_dir=str(tmp_path / "runs"),
+        profiles=["earbuds_glasses"],
+        thresholds=[0.3, 0.5],
+        cooldowns=[0.1, 0.2],
+        metric_mode="sample_presence",
+    )
+    metrics = json.loads((cal_run / "metrics.json").read_text(encoding="utf-8"))
+    best = metrics["calibration"]["best_by_profile"]["earbuds_glasses"]["best_row"]
+    assert "sample_presence" in best

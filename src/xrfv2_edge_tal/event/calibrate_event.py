@@ -92,16 +92,18 @@ def _render_calibration_report(
         if fp_hour_budget is not None
         else "- FP/hour budget: <none>",
         "",
-        "| Profile | Best threshold | Best cooldown (s) | Onset F1 | Within F1 | Onset FP/hour | Within FP/hour | Budget met |",
-        "|---|---:|---:|---:|---:|---:|---:|---|",
+        "| Profile | Best threshold | Best cooldown (s) | Onset F1 | Within F1 | Sample F1 | Onset FP/hour | Within FP/hour | Sample FP/hour | Budget met |",
+        "|---|---:|---:|---:|---:|---:|---:|---:|---:|---|",
     ]
     for profile, payload in best_by_profile.items():
         row = payload["best_row"]
+        sample = row.get("sample_presence", {})
         lines.append(
             "| "
             f"`{profile}` | {float(row['threshold']):.2f} | {float(row['cooldown_s']):.3f} | "
-            f"{float(row['onset_strict']['f1']):.4f} | {float(row['within_segment']['f1']):.4f} | "
+            f"{float(row['onset_strict']['f1']):.4f} | {float(row['within_segment']['f1']):.4f} | {float(sample.get('f1', 0.0)):.4f} | "
             f"{float(row['onset_strict']['fp_per_hour']):.3f} | {float(row['within_segment']['fp_per_hour']):.3f} | "
+            f"{float(sample.get('fp_per_hour', 0.0)):.3f} | "
             f"{str(bool(payload['budget_met']))} |"
         )
     lines.append("")
@@ -124,8 +126,10 @@ def calibrate_event_main(
 ) -> Path:
     _set_seed(seed)
 
-    if metric_mode not in {"onset_strict", "within_segment"}:
-        raise ValueError("metric_mode must be one of: onset_strict, within_segment")
+    if metric_mode not in {"onset_strict", "within_segment", "sample_presence"}:
+        raise ValueError(
+            "metric_mode must be one of: onset_strict, within_segment, sample_presence"
+        )
 
     state, metadata = load_checkpoint(checkpoint)
     runtime_cfg = config.get("runtime", {})
@@ -311,6 +315,7 @@ def calibrate_event_main(
                     "num_ground_truth": len(ground_truth_flat),
                     "onset_strict": metrics["onset_strict"],
                     "within_segment": metrics["within_segment"],
+                    "sample_presence": metrics["sample_presence"],
                 }
                 profile_rows.append(row)
                 calibration_rows.append(row)
