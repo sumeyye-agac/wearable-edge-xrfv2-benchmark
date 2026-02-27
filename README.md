@@ -90,6 +90,28 @@ Secondary quality signal (`earbuds_glasses`): `within_segment F1 = 0.4052`.
 
 Full details: `docs/event/results_latest.md`.
 
+## Full Reproducibility Protocol
+
+One command reproduces the full pipeline (train + eval + calibration) with fixed seed and full splits:
+
+```bash
+python scripts/reproduce_full_run.py \
+  --config configs/event_presence_mobility.yaml \
+  --adapter xrfv2 \
+  --data-root data/raw/xrfv2_kaggle \
+  --seed 42 \
+  --train-profile earbuds_glasses \
+  --profiles earbuds_glasses,glasses_only \
+  --train-device auto \
+  --eval-device auto
+```
+
+Outputs:
+
+- global manifest: `runs/repro_full_latest.json`
+- run-local manifest: `runs/<calibrate_run_id>/repro_manifest.json`
+- full metric artifacts in referenced run directories (`metrics.json`, `profile_metrics.json`, `calibration_grid.json`, reports)
+
 ## Strengths, Limits, and Improvement Path
 
 Current strengths:
