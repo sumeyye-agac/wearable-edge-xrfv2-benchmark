@@ -606,8 +606,11 @@ def train_event_main(
                 }
             )
 
+    task_variant = str(config.get("labels", {}).get("task_variant", "event_detection"))
+
     metadata = {
-        "task": "phone_interaction_event",
+        "task": "event_detection",
+        "task_variant": task_variant,
         "event_mode": event_mode,
         "model_name": model_name,
         "input_dims": input_dims,
@@ -641,7 +644,8 @@ def train_event_main(
     fingerprint = compute_dataset_fingerprint(data_root=data_root, manifest=manifest)
 
     metrics = {
-        "task": "phone_interaction_event",
+        "task": "event_detection",
+        "task_variant": task_variant,
         "event_mode": event_mode,
         "profile": profile_name,
         "train": {

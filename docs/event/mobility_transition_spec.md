@@ -31,18 +31,18 @@ This is intentionally simpler than strict trigger localization and better aligne
 
 Checkpoint:
 
-- `runs/20260227_000037_4d7e71f5/checkpoints/last.npz`
+- `runs/20260227_021605_0bc9e9f1/checkpoints/last.npz`
 
 Calibration run:
 
-- `runs/20260227_010805_f46605ff`
+- `runs/20260227_030614_5a32e2cf`
 
 Best budgeted point (`FP/hour <= 10`):
 
 - threshold: `0.835`
 - cooldown: `0.0s`
-- `sample_presence` F1: `0.6109`
-- `sample_presence` FP/hour: `9.91`
+- `sample_presence` F1: `0.6117`
+- `sample_presence` FP/hour: `6.77`
 
 ## Commands
 

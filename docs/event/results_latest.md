@@ -8,25 +8,41 @@
 
 ## Reproducible runs
 
-- train run: `runs/20260227_000037_4d7e71f5`
-- eval run: `runs/20260227_011127_f46605ff`
-- calibration run: `runs/20260227_010805_f46605ff`
+- train run: `runs/20260227_021605_0bc9e9f1`
+- eval run: `runs/20260227_030049_5a32e2cf`
+- calibration run: `runs/20260227_030614_5a32e2cf`
+
+Training facts (full train split, 9,660 samples):
+
+- epochs: `3`
+- total train steps: `494,382`
+- epoch wall time: `792.6s`, `793.2s`, `774.7s` (about 39 minutes total)
 
 ## Official budgeted operating point
 
 - metric mode: `sample_presence`
 - FP/hour budget: `<= 10`
+- profile: `earbuds_glasses`
 - threshold: `0.835`
 - cooldown: `0.0s`
-- F1: `0.6109`
-- precision: `0.7289`
-- recall: `0.5258`
-- FP/hour: `9.91`
-- confusion counts: `TP=621`, `FP=231`, `FN=560`
+- F1: `0.6117`
+- precision: `0.8014`
+- recall: `0.4946`
+- FP/hour: `6.77`
+- confusion counts: `TP=3002`, `FP=744`, `FN=3067`
+
+Fallback profile (`glasses_only`) under same budget:
+
+- threshold: `0.90`
+- cooldown: `0.0s`
+- F1: `0.5816`
+- precision: `0.8414`
+- recall: `0.4433`
+- FP/hour: `5.67`
 
 ## Secondary metric at same operating point
 
-- within_segment F1: `0.3944`
-- within_segment FP/hour: `15.84`
+- within_segment F1: `0.4052`
+- within_segment FP/hour: `12.29`
 
 The selected deploy point satisfies the sample-level false-positive budget and keeps trigger-level metrics visible for ongoing improvement work.

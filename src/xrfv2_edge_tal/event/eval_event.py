@@ -675,8 +675,10 @@ def eval_event_main(
     run_dir = create_run_dir(
         base_dir=output_dir, config_dict=config, command_str="xrfv2-edge-tal event-eval"
     )
+    task_variant = str(config.get("labels", {}).get("task_variant", "event_detection"))
     payload = {
-        "task": "phone_interaction_event",
+        "task": "event_detection",
+        "task_variant": task_variant,
         "event_mode": event_mode,
         "profile": primary,
         "profiles": selected_profiles,

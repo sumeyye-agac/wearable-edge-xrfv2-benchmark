@@ -72,12 +72,13 @@ xrfv2-edge-tal event-calibrate \
 
 ## Latest reproducible operating point
 
-Reference calibration run: `runs/20260227_010805_f46605ff`
+Reference full calibration run: `runs/20260227_030614_5a32e2cf`
 
-- `sample_presence` F1: `0.6109`
-- precision: `0.7289`
-- recall: `0.5258`
-- FP/hour: `9.91`
+- profile: `earbuds_glasses`
+- `sample_presence` F1: `0.6117`
+- precision: `0.8014`
+- recall: `0.4946`
+- FP/hour: `6.77`
 - threshold: `0.835`
 - cooldown: `0.0s`
 

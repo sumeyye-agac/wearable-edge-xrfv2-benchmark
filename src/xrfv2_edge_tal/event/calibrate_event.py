@@ -342,8 +342,10 @@ def calibrate_event_main(
         event_mode=event_mode,
     )
 
+    task_variant = str(config.get("labels", {}).get("task_variant", "event_detection"))
     payload = {
-        "task": "phone_interaction_event",
+        "task": "event_detection",
+        "task_variant": task_variant,
         "event_mode": event_mode,
         "calibration": {
             "metric_mode": metric_mode,
