@@ -2,18 +2,22 @@
 
 This repository is a flagship, reproducible edge-ML benchmark for **wearable event detection** on XRF V2, designed for realistic product sensors: **earbuds + smart glasses**.
 
-## Why This Project Exists
+## At A Glance
 
-Most academic wearable benchmarks optimize broad activity recognition or full temporal localization with sensor setups that are hard to ship. This project intentionally targets a narrower, product-relevant question:
+- Focused task: **Mobility Transition Presence** (not a broad academic catch-all).
+- Product-first profiles: `earbuds_glasses` default, `glasses_only` fallback.
+- Deployment-aware evaluation: calibrated operating point under `FP/hour` budget.
+- Full reproducibility: run IDs, machine-readable artifacts, one-command end-to-end script.
 
-- Can we get useful event detection quality on constrained, wearable-first sensors?
-- Can we hold false positives to a deployment budget?
-- Can the full pipeline be reproduced end-to-end with strict artifacts?
+## Why This Scope
 
-Primary audience fit:
+Most wearable benchmarks prioritize broad recognition or full localization with sensor setups that are hard to ship.  
+This project intentionally prioritizes a narrower but deployable objective.
 
-- **AI Research Engineer / Scientist Lead**: clear task framing, robust metrics, reproducible artifacts.
-- **Startup Founder / CTO**: profile-based deployment story, latency/size visibility, known risks and next actions.
+Audience fit:
+
+- **AI Research Engineer / Scientist Lead**: explicit assumptions, reproducible metrics, transparent limits.
+- **Startup Founder / CTO**: clear profile trade-offs, budgeted false positives, operationally useful artifacts.
 
 ## Final Task Definition
 
@@ -24,6 +28,14 @@ Primary audience fit:
 - Primary decision metric: `sample_presence` F1 under `FP/hour <= 10`
 
 This is a deliberate simplification from harder semantic tasks, chosen to reach a practical edge operating point.
+
+## Quickstart (No Dataset Required)
+
+```bash
+pip install -e ".[dev]"
+xrfv2-edge-tal event-train --config configs/event_presence_mobility.yaml --adapter dummy
+xrfv2-edge-tal event-eval --config configs/event_presence_mobility.yaml --adapter dummy --checkpoint runs/<train_run_id>/checkpoints/last.npz --profiles earbuds_glasses,glasses_only
+```
 
 ## Deployment Profiles
 
@@ -112,6 +124,11 @@ Outputs:
 - run-local manifest: `runs/<calibrate_run_id>/repro_manifest.json`
 - full metric artifacts in referenced run directories (`metrics.json`, `profile_metrics.json`, `calibration_grid.json`, reports)
 
+Note on determinism:
+
+- Config and seed are fixed in the reproducibility script.
+- For closest numerical repeatability across machines, run with `--train-device cpu --eval-device cpu`.
+
 ## Strengths, Limits, and Improvement Path
 
 Current strengths:
@@ -132,14 +149,6 @@ Planned improvements (without scope drift):
 - Add confidence calibration per profile with validation-split guardrails
 - Improve recall under fixed FP budget via hard-negative mining and temporal context tuning
 - Add stricter deployment gate report (`F1`, `FP/hour`, latency, checkpoint size) as one summary artifact
-
-## Quickstart (No Dataset Required)
-
-```bash
-pip install -e ".[dev]"
-xrfv2-edge-tal event-train --config configs/event_presence_mobility.yaml --adapter dummy
-xrfv2-edge-tal event-eval --config configs/event_presence_mobility.yaml --adapter dummy --checkpoint runs/<train_run_id>/checkpoints/last.npz --profiles earbuds_glasses,glasses_only
-```
 
 ## Run on Real XRF V2
 
