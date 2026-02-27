@@ -21,6 +21,7 @@ Each run must emit a self-contained artifact directory under `runs/`.
 - `calibration_report.md`: best threshold/cooldown per profile (`event-calibrate`).
 - `calibration_grid.json`: full threshold/cooldown sweep rows (`event-calibrate`).
 - `docs/event/results_latest.md`: latest experiment ledger and plan decisions (referenced from README).
+- `docs/event/mobility_transition_spec.md`: deploy-track event definition and operating-point rationale.
 
 ## Directory shape
 
