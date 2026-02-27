@@ -1,35 +1,33 @@
-# XRF V2 Edge Benchmark: Deploy-Oriented Wearable Event Detection
+# XRF V2 Edge Benchmark: Wearable Event Detection
 
-This repository is a flagship, reproducible edge-ML benchmark for **wearable event detection** on XRF V2, designed for realistic product sensors: **earbuds + smart glasses**.
+This repo contains an end-to-end benchmark for wearable event detection on XRF V2, with a practical sensor setup: **earbuds + smart glasses**.
 
-## At A Glance
+## What This Repo Does
 
-- Focused task: **Mobility Transition Presence** (not a broad academic catch-all).
-- Product-first profiles: `earbuds_glasses` default, `glasses_only` fallback.
-- Deployment-aware evaluation: calibrated operating point under `FP/hour` budget.
-- Full reproducibility: run IDs, machine-readable artifacts, one-command end-to-end script.
+- Defines a deploy-oriented event task: **Mobility Transition Presence**
+- Trains and evaluates lightweight models on profile-restricted sensors
+- Calibrates operating points under a false-positive budget (`FP/hour`)
+- Produces machine-readable artifacts for every run
 
-## Why This Scope
+## Task Definition
 
-Most wearable benchmarks prioritize broad recognition or full localization with sensor setups that are hard to ship.  
-This project intentionally prioritizes a narrower but deployable objective.
-
-Audience fit:
-
-- **AI Research Engineer / Scientist Lead**: explicit assumptions, reproducible metrics, transparent limits.
-- **Startup Founder / CTO**: clear profile trade-offs, budgeted false positives, operationally useful artifacts.
-
-## Final Task Definition
-
-- Task: **Mobility Transition Presence** detection
 - Positive labels: `Walking (24)`, `Standing Up (26)`, `Lying Down (27)`
 - Input: time-series windows from XRF V2 modalities (`airpods`, split IMU receivers, optional Wi-Fi)
-- Output: trigger stream + profile-level metrics + calibrated operating point
-- Primary decision metric: `sample_presence` F1 under `FP/hour <= 10`
+- Output: event triggers + profile-level metrics + calibrated threshold/cooldown
+- Main decision metric: `sample_presence` F1 with `FP/hour <= 10`
 
-This is a deliberate simplification from harder semantic tasks, chosen to reach a practical edge operating point.
+The scope is intentionally narrow: this is a reliability-first event track, not a broad activity suite.
 
-## Quickstart (No Dataset Required)
+## Deployment Profiles
+
+| Profile | Sensors | Purpose |
+|---|---|---|
+| `earbuds_glasses` | `airpods + imu_gl` | default profile |
+| `glasses_only` | `imu_gl` | fallback profile |
+| `all_imu` | all IMU streams | diagnostic upper bound |
+| `wifi_all` | Wi-Fi + all IMU | non-product upper bound |
+
+## Quickstart (No Dataset)
 
 ```bash
 pip install -e ".[dev]"
@@ -37,26 +35,11 @@ xrfv2-edge-tal event-train --config configs/event_presence_mobility.yaml --adapt
 xrfv2-edge-tal event-eval --config configs/event_presence_mobility.yaml --adapter dummy --checkpoint runs/<train_run_id>/checkpoints/last.npz --profiles earbuds_glasses,glasses_only
 ```
 
-## Deployment Profiles
+## Data
 
-| Profile | Sensors | Role |
-|---|---|---|
-| `earbuds_glasses` | `airpods + imu_gl` | product default |
-| `glasses_only` | `imu_gl` | fail-safe fallback |
-| `all_imu` | all IMU streams | diagnostic upper bound |
-| `wifi_all` | Wi-Fi + all IMU | non-product upper bound |
+XRF V2 is not redistributed in this repository.
 
-Why profiles matter:
-
-- They prevent unrealistic claims.
-- They expose sensor-dependency risk explicitly.
-- They give a CTO-friendly path: default profile + degraded fallback profile.
-
-## Data Contract
-
-XRF V2 is not redistributed here. Obtain it from the official XRFV2 source.
-
-Expected directory:
+Expected local layout:
 
 ```text
 data/raw/xrfv2_kaggle/
@@ -67,23 +50,12 @@ data/raw/xrfv2_kaggle/
   info.json
 ```
 
-In-repo canonicalization:
+Canonical handling in this repo:
 
-- `imu` -> `imu_gl`, `imu_lh`, `imu_rh`, `imu_lp`, `imu_rp`
-- `airpods` -> 6 channels (`acc + rot`)
+- `imu` is exposed as `imu_gl`, `imu_lh`, `imu_rh`, `imu_lp`, `imu_rp`
+- `airpods` is reduced to 6 channels (`acc + rot`)
 
-## System Overview
-
-1. Ingest and validate XRF V2 H5/JSON schema
-2. Select profile modalities (`earbuds_glasses` by default)
-3. Hierarchical event pipeline:
-   - candidate generation from glasses motion energy
-   - window-level tiny model scoring
-   - trigger filtering (threshold/cooldown/hysteresis)
-4. Evaluate with `onset_strict`, `within_segment`, and `sample_presence`
-5. Calibrate threshold/cooldown under `FP/hour` budget
-
-## Latest Reproducible Result (Full Run)
+## Current Reproducible Result
 
 Reference runs:
 
@@ -91,20 +63,18 @@ Reference runs:
 - eval: `runs/20260227_030049_5a32e2cf`
 - calibrate: `runs/20260227_030614_5a32e2cf`
 
-Budgeted operating point (`metric_mode=sample_presence`, `FP/hour<=10`):
+Budgeted operating point (`sample_presence`, `FP/hour<=10`):
 
 | Profile | F1 | Precision | Recall | FP/hour | Threshold | Cooldown(s) |
 |---|---:|---:|---:|---:|---:|---:|
 | `earbuds_glasses` | **0.6117** | 0.8014 | 0.4946 | 6.77 | 0.835 | 0.0 |
 | `glasses_only` | **0.5816** | 0.8414 | 0.4433 | 5.67 | 0.900 | 0.0 |
 
-Secondary quality signal (`earbuds_glasses`): `within_segment F1 = 0.4052`.
+Additional signal (`earbuds_glasses`): `within_segment F1 = 0.4052`.
 
-Full details: `docs/event/results_latest.md`.
+Detailed ledger: `docs/event/results_latest.md`.
 
-## Full Reproducibility Protocol
-
-One command reproduces the full pipeline (train + eval + calibration) with fixed seed and full splits:
+## Full Reproduction (One Command)
 
 ```bash
 python scripts/reproduce_full_run.py \
@@ -118,39 +88,14 @@ python scripts/reproduce_full_run.py \
   --eval-device auto
 ```
 
-Outputs:
+Generated manifests:
 
-- global manifest: `runs/repro_full_latest.json`
-- run-local manifest: `runs/<calibrate_run_id>/repro_manifest.json`
-- full metric artifacts in referenced run directories (`metrics.json`, `profile_metrics.json`, `calibration_grid.json`, reports)
+- `runs/repro_full_latest.json`
+- `runs/<calibrate_run_id>/repro_manifest.json`
 
-Note on determinism:
+For closest numeric repeatability across machines, use `--train-device cpu --eval-device cpu`.
 
-- Config and seed are fixed in the reproducibility script.
-- For closest numerical repeatability across machines, run with `--train-device cpu --eval-device cpu`.
-
-## Strengths, Limits, and Improvement Path
-
-Current strengths:
-
-- Reproducible full pipeline with deterministic artifacts
-- Explicit deployment profile logic (default + fallback)
-- Budget-aware calibration (`FP/hour`) instead of raw-threshold reporting
-- Edge footprint is transparent in run artifacts (model size, latency blocks)
-
-Known limitations:
-
-- Onset-strict trigger metric remains low for this task/sensor pair
-- Recall is moderate at the chosen low-FP operating point
-- Semantically richer event definitions are harder under wearable-only constraints
-
-Planned improvements (without scope drift):
-
-- Add confidence calibration per profile with validation-split guardrails
-- Improve recall under fixed FP budget via hard-negative mining and temporal context tuning
-- Add stricter deployment gate report (`F1`, `FP/hour`, latency, checkpoint size) as one summary artifact
-
-## Run on Real XRF V2
+## Run On Real XRF V2 (Manual Steps)
 
 ```bash
 xrfv2-edge-tal inspect --adapter xrfv2 --data-root data/raw/xrfv2_kaggle --list-modalities --show-shapes
@@ -181,10 +126,22 @@ xrfv2-edge-tal event-calibrate \
   --override eval.max_eval_samples=0
 ```
 
-## Reproducibility Contract
+## What Is Solid, What Is Not Yet
 
-- Deploy spec: `docs/event/mobility_transition_spec.md`
-- Dataset notes: `docs/dataset_xrfv2.md`
-- Artifact contract: `docs/artifact_contract.md`
+Solid:
 
-Every run writes machine-readable files under `runs/<run_id>/` so claims can be audited and reproduced.
+- Reproducible run trail with structured artifacts
+- Clear profile separation (default + fallback + upper bounds)
+- Budget-based calibration instead of raw threshold reporting
+
+Still improving:
+
+- `onset_strict` is low for this sensor/task setup
+- recall can be higher at the chosen FP budget
+- richer semantic events remain harder with wearable-only inputs
+
+## Docs
+
+- deploy spec: `docs/event/mobility_transition_spec.md`
+- dataset notes: `docs/dataset_xrfv2.md`
+- artifact contract: `docs/artifact_contract.md`
