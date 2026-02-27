@@ -1,28 +1,30 @@
 # Artifact Contract
 
-Each run must emit a self-contained artifact directory under `runs/`.
+Each run writes a self-contained artifact directory under `runs/`.
 
-## Required files
+## Core files
 
-- `resolved_config.yaml`: fully resolved config used for the run.
-- `env.json`: environment details (python, platform, selected package versions).
-- `git.json`: git metadata (commit hash, branch, dirty flag) when available.
-- `command.txt`: exact CLI command used to launch the run.
-- `metrics.json`: train/eval scalar metrics and summary values.
-- `dataset_fingerprint.json`: lightweight dataset fingerprint (file sizes + hash mode + counts).
-- `benchmark.json`: edge benchmarking metrics (params, model size, latency).
+- `resolved_config.yaml`: fully resolved config used for the run
+- `env.json`: python/platform/runtime details
+- `git.json`: commit, branch, dirty state (when available)
+- `command.txt`: exact CLI invocation
+- `metrics.json`: scalar metrics and summary blocks
+- `dataset_fingerprint.json`: lightweight data fingerprint for reproducibility
+- `benchmark.json`: model params, size, latency (for benchmark runs)
 
 ## Event-track files
 
-- `profile_metrics.json`: profile-wise metrics map for `earbuds_glasses`, `glasses_only`, optional `all_imu`.
-  Includes `onset_strict`, `within_segment`, and `sample_presence` metric blocks.
-- `profile_report.md`: table report for profile comparison.
-- `event_predictions.json`: emitted triggers with score/time/profile.
-- `event_ground_truth.json`: GT event starts used for matching.
-- `calibration_report.md`: best threshold/cooldown per profile (`event-calibrate`).
-- `calibration_grid.json`: full threshold/cooldown sweep rows (`event-calibrate`).
-- `docs/event/results_latest.md`: latest experiment ledger and plan decisions (referenced from README).
-- `docs/event/mobility_transition_spec.md`: deploy-track event definition and operating-point rationale.
+- `profile_metrics.json`: per-profile metrics for `earbuds_glasses`, `glasses_only`, optional upper bounds
+- `profile_report.md`: readable profile comparison table
+- `event_predictions.json`: predicted trigger times and scores
+- `event_ground_truth.json`: ground-truth event starts used for matching
+- `calibration_report.md`: selected threshold/cooldown operating point (`event-calibrate`)
+- `calibration_grid.json`: full threshold/cooldown sweep (`event-calibrate`)
+
+## Repository-level references
+
+- `docs/event/mobility_transition_spec.md`: deploy-track definition
+- `docs/event/results_latest.md`: latest reproducible run ledger and operating point
 
 ## Directory shape
 

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Run flat/hierarchical experiment ladders and save a consolidated summary."""
+"""Run deploy-track experiment ladders and save a consolidated summary."""
 
 from __future__ import annotations
 
@@ -136,7 +136,7 @@ def _run_single_ladder(
         "--profiles",
         profiles_csv,
         "--metric-mode",
-        "within_segment",
+        "sample_presence",
         "--fp-hour-budget",
         str(fp_hour_budget),
         "--seed",
@@ -189,13 +189,13 @@ def _build_result_record(run: LadderRun) -> dict[str, Any]:
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--config", default="configs/event_phone_interaction.yaml")
+    parser.add_argument("--config", default="configs/event_presence_mobility.yaml")
     parser.add_argument("--adapter", default="xrfv2", choices=["dummy", "xrfv2"])
     parser.add_argument("--data-root", default="data/raw/xrfv2_kaggle")
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--train-device", default="mps")
     parser.add_argument("--eval-device", default="cpu")
-    parser.add_argument("--event-mode", default="flat", choices=["flat", "hierarchical"])
+    parser.add_argument("--event-mode", default="hierarchical", choices=["flat", "hierarchical"])
     parser.add_argument("--epochs", type=int, default=3)
     parser.add_argument(
         "--profiles",
@@ -206,12 +206,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--fp-hour-budget", type=float, default=10.0)
     parser.add_argument(
         "--calibrate-thresholds",
-        default="0.20,0.30,0.40,0.50,0.60",
+        default="0.70,0.75,0.80,0.835,0.85,0.90",
         help="Comma-separated threshold grid for event-calibrate",
     )
     parser.add_argument(
         "--calibrate-cooldowns",
-        default="0.50,2.00,4.00",
+        default="0.00,0.50,2.00",
         help="Comma-separated cooldown grid (seconds) for event-calibrate",
     )
     parser.add_argument(

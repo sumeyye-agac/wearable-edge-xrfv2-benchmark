@@ -1,25 +1,22 @@
 # XRF V2 Edge Benchmark: Deploy-Ready Wearable Event Detection
 
-This repo is an edge ML benchmark for wearable IMU event detection on XRF V2, focused on **earbuds + smart-glasses** deployment profiles.
+This repository implements a reproducible, edge-first event detector on XRF V2 for the realistic wearable sensor pair: **earbuds + smart glasses**.
 
-## What is deployed here
+## Problem, input, output
 
-The default deploy track is a simplified, physically observable objective:
+- Task: detect **Mobility Transition Presence**.
+- Positive labels: `Walking (24)`, `Standing Up (26)`, `Lying Down (27)`.
+- Input: multi-modal time-series windows from XRF V2 (`airpods`, split IMU receivers, optional Wi-Fi).
+- Output: calibrated event triggers and profile-wise reports.
+- Primary deploy metric: `sample_presence` F1 under `FP/hour <= 10`.
 
-- **Mobility Transition Presence**
-- positive labels: `Walking (24)`, `Standing Up (26)`, `Lying Down (27)`
-- deployment metric: `sample_presence` F1 under `FP/hour <= 10`
-
-Why simplification:
-
-- strict phone-semantic triggers were not stable enough under hard FP budgets
-- this track provides a reliable deploy operating point with reproducible artifacts
+This task is intentionally scoped to a physically observable behavior so that the model can meet practical false-positive constraints on edge devices.
 
 ## Data
 
-XRF V2 is not redistributed in this repo.
+XRF V2 is not redistributed here. Obtain it from the official XRFV2 project/release channels.
 
-Expected folder:
+Expected local directory:
 
 ```text
 data/raw/xrfv2_kaggle/
@@ -30,21 +27,21 @@ data/raw/xrfv2_kaggle/
   info.json
 ```
 
-Modality handling:
+Data normalization in this repo:
 
-- `imu` is split to: `imu_gl`, `imu_lh`, `imu_rh`, `imu_lp`, `imu_rp`
-- `airpods` is reduced to 6 channels (`acc + rot`)
+- `imu` is canonically exposed as `imu_gl`, `imu_lh`, `imu_rh`, `imu_lp`, `imu_rp`
+- `airpods` is reduced to 6 channels (`acc + rot`) for stable profile behavior
 
-## Profiles
+## Deployment profiles
 
-| Profile | Sensors | Purpose |
+| Profile | Sensors | Intended use |
 |---|---|---|
 | `earbuds_glasses` | `airpods + imu_gl` | default product profile |
 | `glasses_only` | `imu_gl` | fallback profile |
-| `all_imu` | all IMU streams | diagnostic |
-| `wifi_all` | Wi-Fi + all IMU | non-product diagnostic |
+| `all_imu` | all IMU streams | diagnostic upper bound |
+| `wifi_all` | Wi-Fi + all IMU | non-product upper bound |
 
-## Quickstart (dummy)
+## Quickstart (no dataset required)
 
 ```bash
 pip install -e ".[dev]"
@@ -52,43 +49,47 @@ xrfv2-edge-tal event-train --config configs/event_presence_mobility.yaml --adapt
 xrfv2-edge-tal event-eval --config configs/event_presence_mobility.yaml --adapter dummy --checkpoint runs/<train_run_id>/checkpoints/last.npz --profiles earbuds_glasses,glasses_only
 ```
 
-## Real XRF V2: Deploy Track
+## Real XRF V2 run
 
 ```bash
+xrfv2-edge-tal inspect --adapter xrfv2 --data-root data/raw/xrfv2_kaggle --list-modalities --show-shapes
+
 xrfv2-edge-tal event-train \
   --config configs/event_presence_mobility.yaml \
-  --adapter xrfv2 --data-root data/raw/xrfv2_kaggle \
+  --adapter xrfv2 \
+  --data-root data/raw/xrfv2_kaggle \
   --profile glasses_only
 
 xrfv2-edge-tal event-calibrate \
   --config configs/event_presence_mobility.yaml \
-  --adapter xrfv2 --data-root data/raw/xrfv2_kaggle \
-  --checkpoint runs/<train_run>/checkpoints/last.npz \
+  --adapter xrfv2 \
+  --data-root data/raw/xrfv2_kaggle \
+  --checkpoint runs/<train_run_id>/checkpoints/last.npz \
   --profiles earbuds_glasses,glasses_only \
-  --metric-mode sample_presence --fp-hour-budget 10
+  --metric-mode sample_presence \
+  --fp-hour-budget 10
 ```
 
-## Latest reproducible result
+## Latest reproducible operating point
 
-Run: `runs/20260227_010805_f46605ff`
+Reference calibration run: `runs/20260227_010805_f46605ff`
 
-Budgeted best (`sample_presence`, `FP/hour<=10`):
+- `sample_presence` F1: `0.6109`
+- precision: `0.7289`
+- recall: `0.5258`
+- FP/hour: `9.91`
+- threshold: `0.835`
+- cooldown: `0.0s`
 
-- **F1 = 0.6109**
-- precision = `0.7289`
-- recall = `0.5258`
-- FP/hour = `9.91`
-- threshold = `0.835`, cooldown = `0.0s`
+Full result ledger and run links: `docs/event/results_latest.md`
 
-Full ledger: `docs/event/results_latest.md`
-
-## Specs and artifacts
+## Reproducibility and artifacts
 
 - Deploy spec: `docs/event/mobility_transition_spec.md`
-- Phone-semantic research spec: `docs/event/phone_interaction_spec.md`
+- Dataset notes: `docs/dataset_xrfv2.md`
 - Artifact contract: `docs/artifact_contract.md`
 
-Every run writes machine-readable artifacts under `runs/<run_id>/`.
+Each run writes machine-readable artifacts under `runs/<run_id>/`.
 
 ## License
 

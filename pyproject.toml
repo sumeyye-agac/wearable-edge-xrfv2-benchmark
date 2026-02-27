@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "xrfv2-edge-tal"
 version = "0.1.0"
-description = "Edge-first Temporal Action Localization benchmark for XRF V2"
+description = "Edge-first wearable event detection benchmark for XRF V2"
 readme = "README.md"
 requires-python = ">=3.10"
 license = { text = "MIT" }

@@ -8,6 +8,11 @@ This deploy track uses a simplified, product-friendly objective:
 - Sensors: earbuds + glasses (`earbuds_glasses`) with glasses-only fallback
 - Primary metric: `sample_presence` F1 under `FP/hour <= 10`
 
+Model input/output:
+
+- Input: profile-filtered IMU windows (`airpods + imu_gl` by default)
+- Output: discrete event triggers and profile-level metrics
+
 `sample_presence` means:
 
 - Each sample window is binary (`event present` / `not present`).
