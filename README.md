@@ -70,22 +70,22 @@ Reference runs:
 
 ### Calibration-constrained results (`sample_presence`, `FP/hour<=10`)
 
-| Profile | F1 | Precision | Recall | FP/hour | Threshold | Cooldown(s) |
+| Profile | F1 (%) | Precision (%) | Recall (%) | FP/hour | Threshold | Cooldown(s) |
 |---|---:|---:|---:|---:|---:|---:|
-| `earbuds_glasses` | **0.6117** | 0.8014 | 0.4946 | 6.77 | 0.835 | 0.0 |
-| `glasses_only` | **0.5816** | 0.8414 | 0.4433 | 5.67 | 0.900 | 0.0 |
+| `earbuds_glasses` | **61.17%** | 80.14% | 49.46% | 6.77 | 0.835 | 0.0 |
+| `glasses_only` | **58.16%** | 84.14% | 44.33% | 5.67 | 0.900 | 0.0 |
 
 ### Raw eval at config default threshold
 
-| Profile | Sample F1 | Precision | Recall | FP/hour |
+| Profile | Sample F1 (%) | Precision (%) | Recall (%) | FP/hour |
 |---|---:|---:|---:|---:|
-| `earbuds_glasses` | 0.6117 | 0.8014 | 0.4946 | 6.77 |
-| `glasses_only` | 0.7181 | 0.7520 | 0.6871 | 12.51 |
+| `earbuds_glasses` | 61.17% | 80.14% | 49.46% | 6.77 |
+| `glasses_only` | 71.81% | 75.20% | 68.71% | 12.51 |
 
 `glasses_only` looks higher on raw F1, but misses the FP/hour budget at default threshold.  
 The calibrated table above is the deploy decision table.
 
-Additional signal (`earbuds_glasses`): `within_segment F1 = 0.4052`, `onset_strict F1 = 0.0013`.
+Additional signal (`earbuds_glasses`): `within_segment F1 = 40.52%`, `onset_strict F1 = 0.13%`.
 
 Detailed ledger: `docs/event/results_latest.md`.
 
