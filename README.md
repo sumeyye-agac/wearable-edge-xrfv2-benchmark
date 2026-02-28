@@ -72,20 +72,20 @@ Reference runs:
 
 | Profile | F1 (%) | Precision (%) | Recall (%) | FP/hour | Threshold | Cooldown(s) |
 |---|---:|---:|---:|---:|---:|---:|
-| `earbuds_glasses` | **61.17%** | 80.14% | 49.46% | 6.77 | 0.835 | 0.0 |
-| `glasses_only` | **58.16%** | 84.14% | 44.33% | 5.67 | 0.900 | 0.0 |
+| `earbuds_glasses` | **61.17** | 80.14 | 49.46 | 6.77 | 0.835 | 0.0 |
+| `glasses_only` | **58.16** | 84.14 | 44.33 | 5.67 | 0.900 | 0.0 |
 
 ### Raw eval at config default threshold
 
 | Profile | Sample F1 (%) | Precision (%) | Recall (%) | FP/hour |
 |---|---:|---:|---:|---:|
-| `earbuds_glasses` | 61.17% | 80.14% | 49.46% | 6.77 |
-| `glasses_only` | 71.81% | 75.20% | 68.71% | 12.51 |
+| `earbuds_glasses` | 61.17 | 80.14 | 49.46 | 6.77 |
+| `glasses_only` | 71.81 | 75.20 | 68.71 | 12.51 |
 
 `glasses_only` looks higher on raw F1, but misses the FP/hour budget at default threshold.  
 The calibrated table above is the deploy decision table.
 
-Additional signal (`earbuds_glasses`): `within_segment F1 = 40.52%`, `onset_strict F1 = 0.13%`.
+Additional signal (`earbuds_glasses`): `within_segment F1 = 40.52`, `onset_strict F1 = 0.13`.
 
 Detailed ledger: `docs/event/results_latest.md`.
 
