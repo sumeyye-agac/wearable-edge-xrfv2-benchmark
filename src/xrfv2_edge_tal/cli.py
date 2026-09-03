@@ -329,11 +329,15 @@ def cmd_event_calibrate(
     _echo(f"Grid: {run_dir / 'calibration_grid.json'}")
 
 
-def cmd_benchmark(checkpoint: str, config: str, seed: int, output_dir: str) -> None:
+def cmd_benchmark(
+    checkpoint: str, config: str, seed: int, output_dir: str, profile: str | None = None
+) -> None:
     from xrfv2_edge_tal.benchmark import benchmark_main
 
     cfg = load_yaml_config(config)
-    run_dir = benchmark_main(checkpoint=checkpoint, config=cfg, seed=seed, output_dir=output_dir)
+    run_dir = benchmark_main(
+        checkpoint=checkpoint, config=cfg, seed=seed, output_dir=output_dir, profile=profile
+    )
     _echo(f"Benchmark run dir: {run_dir}")
     _echo(f"Benchmark: {run_dir / 'benchmark.json'}")
 
@@ -507,8 +511,11 @@ if HAS_TYPER:
         config: str = typer.Option(..., "--config"),
         seed: int = 42,
         output_dir: str = "runs",
+        profile: str | None = None,
     ) -> None:
-        cmd_benchmark(checkpoint=checkpoint, config=config, seed=seed, output_dir=output_dir)
+        cmd_benchmark(
+            checkpoint=checkpoint, config=config, seed=seed, output_dir=output_dir, profile=profile
+        )
 
     @app.command("export-onnx")
     def export_onnx(
@@ -599,6 +606,7 @@ else:
         p_bench.add_argument("--config", required=True)
         p_bench.add_argument("--seed", type=int, default=42)
         p_bench.add_argument("--output-dir", default="runs")
+        p_bench.add_argument("--profile", default=None)
 
         p_onnx = sub.add_parser("export-onnx")
         p_onnx.add_argument("--checkpoint", required=True)
@@ -687,6 +695,7 @@ else:
                 config=args.config,
                 seed=args.seed,
                 output_dir=args.output_dir,
+                profile=args.profile,
             )
         elif args.command == "export-onnx":
             cmd_export_onnx(

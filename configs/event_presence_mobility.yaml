@@ -83,6 +83,11 @@ eval:
     hysteresis: true
     threshold_off: 0.40
 
+benchmark:
+  seq_len: 160
+  warmup: 5
+  iters: 25
+
 deployment:
   metric_mode: sample_presence
   fp_hour_budget: 10

@@ -135,6 +135,26 @@ def main() -> None:
     cal_out = _exec(cal_cmd)
     cal_run = extract_run_dir(cal_out)
 
+    profile_list = [item.strip() for item in str(args.profiles).split(",") if item.strip()]
+    bench_cmds: dict[str, list[str]] = {}
+    bench_runs: dict[str, str] = {}
+    for profile_name in profile_list:
+        bench_cmd = [
+            "xrfv2-edge-tal",
+            "benchmark",
+            "--config",
+            str(args.config),
+            "--checkpoint",
+            checkpoint,
+            "--seed",
+            str(int(args.seed)),
+            "--profile",
+            profile_name,
+        ]
+        bench_out = _exec(bench_cmd)
+        bench_cmds[profile_name] = bench_cmd
+        bench_runs[profile_name] = extract_run_dir(bench_out)
+
     manifest = {
         "created_at_utc": datetime.utcnow().isoformat(timespec="seconds") + "Z",
         "git_commit": _git_head(),
@@ -143,16 +163,18 @@ def main() -> None:
         "data_root": str(args.data_root),
         "seed": int(args.seed),
         "train_profile": str(args.train_profile),
-        "profiles": [item.strip() for item in str(args.profiles).split(",") if item.strip()],
+        "profiles": profile_list,
         "commands": {
             "train": train_cmd,
             "eval": eval_cmd,
             "calibrate": cal_cmd,
+            "benchmark": bench_cmds,
         },
         "runs": {
             "train": train_run,
             "eval": eval_run,
             "calibrate": cal_run,
+            "benchmark": bench_runs,
         },
         "checkpoint": checkpoint,
         "artifacts": {
@@ -163,6 +185,10 @@ def main() -> None:
             "calibration_metrics": f"{cal_run}/metrics.json",
             "calibration_grid": f"{cal_run}/calibration_grid.json",
             "calibration_report": f"{cal_run}/calibration_report.md",
+            "benchmark": {
+                profile_name: f"{run_dir}/benchmark.json"
+                for profile_name, run_dir in bench_runs.items()
+            },
         },
     }
 
@@ -178,6 +204,8 @@ def main() -> None:
     print(f"Train run: {train_run}")
     print(f"Eval run: {eval_run}")
     print(f"Calibration run: {cal_run}")
+    for profile_name, run_dir in bench_runs.items():
+        print(f"Benchmark run ({profile_name}): {run_dir}")
 
 
 if __name__ == "__main__":

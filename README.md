@@ -3,7 +3,7 @@
 [![CI](https://img.shields.io/github/actions/workflow/status/sumeyye-agac/wearable-edge-xrfv2-benchmark/ci.yml?branch=main&label=CI)](https://github.com/sumeyye-agac/wearable-edge-xrfv2-benchmark/actions/workflows/ci.yml)
 ![Python](https://img.shields.io/badge/Python-3.10%2B-3776AB)
 ![Task](https://img.shields.io/badge/Task-Mobility%20Transition%20Presence-0A7E8C)
-![Edge](https://img.shields.io/badge/Edge-CPU%20latency%20tracked-2E8B57)
+![Edge](https://img.shields.io/badge/Edge-p90%201.98ms%20(M3%20Pro%20CPU)-2E8B57)
 
 This repo contains an end-to-end benchmark for wearable event detection on [XRF V2 (2025)](https://arxiv.org/abs/2501.19034), with a practical sensor setup: **earbuds + smart glasses**.
 
@@ -22,6 +22,15 @@ This repo contains an end-to-end benchmark for wearable event detection on [XRF 
 - Main decision metric: `sample_presence` F1 with `FP/hour <= 10`
 
 The scope is intentionally narrow: this is a reliability-first event track, not a broad activity suite.
+
+## Model
+
+- Architecture: `TinyTCN` with hierarchical candidate generation from glasses IMU energy
+- Candidate scoring: max positive probability over the candidate window
+- Trigger timing: peak-probability frame
+- Size: 386 parameters, ~5.6 KB checkpoint (`hidden_dim=24`, `kernel_size=5`, from `configs/event_presence_mobility.yaml`)
+
+See `docs/event/mobility_transition_spec.md` for the full pipeline description.
 
 ## Deployment Profiles
 
@@ -60,6 +69,8 @@ Canonical handling in this repo:
 - `imu` is exposed as `imu_gl`, `imu_lh`, `imu_rh`, `imu_lp`, `imu_rp`
 - `airpods` is reduced to 6 channels (`acc + rot`)
 
+The source dataset ([XRF V2](https://arxiv.org/abs/2501.19034)) was collected from 16 participants across 3 indoor environments; the reference run below uses the full 9,660-sample train split (see `docs/event/results_latest.md`).
+
 ## Results (Latest Full Run)
 
 Reference runs:
@@ -67,6 +78,8 @@ Reference runs:
 - train: `runs/20260227_021605_0bc9e9f1`
 - eval: `runs/20260227_030049_5a32e2cf`
 - calibrate: `runs/20260227_030614_5a32e2cf`
+- benchmark (`earbuds_glasses`): `runs/20260903_203729_a8f2c405`
+- benchmark (`glasses_only`): `runs/20260903_203730_a8f2c405`
 
 ### Calibration-constrained results (`sample_presence`, `FP/hour<=10`)
 
@@ -88,6 +101,15 @@ The calibrated table above is the deploy decision table.
 Additional signal (`earbuds_glasses`): `within_segment F1 = 40.52`, `onset_strict F1 = 0.13`.
 
 Detailed ledger: `docs/event/results_latest.md`.
+
+### Edge benchmark (same checkpoint, measured on Apple M3 Pro CPU)
+
+| Profile | Params | Checkpoint | Latency p50 | Latency p90 | Latency p95 | Est. FPS (p50) |
+|---|---:|---:|---:|---:|---:|---:|
+| `earbuds_glasses` | 386 | 5.6 KB | 1.69 ms | 1.98 ms | 2.20 ms | 593 |
+| `glasses_only` | 386 | 5.6 KB | 0.92 ms | 1.61 ms | 1.83 ms | 1092 |
+
+`glasses_only` is faster because it skips the `airpods` input branch on the same checkpoint — both profiles ship the same 386-parameter model, just with different active sensor inputs. Produced by `xrfv2-edge-tal benchmark --profile <name>` (`seq_len=160`, `warmup=5`, `iters=25`, `seed=42`); see `docs/artifact_contract.md` for the `benchmark.json` schema.
 
 ## Full Reproduction (One Command)
 
@@ -139,6 +161,11 @@ xrfv2-edge-tal event-calibrate \
   --metric-mode sample_presence \
   --fp-hour-budget 10 \
   --override eval.max_eval_samples=0
+
+xrfv2-edge-tal benchmark \
+  --config configs/event_presence_mobility.yaml \
+  --checkpoint runs/<train_run_id>/checkpoints/last.npz \
+  --profile earbuds_glasses
 ```
 
 ## What Is Solid, What Is Not Yet
@@ -151,7 +178,7 @@ Solid:
 
 Still improving:
 
-- `onset_strict` is low for this sensor/task setup
+- `onset_strict` F1 is low (0.13) because trigger timing fires at the peak-probability frame inside candidate windows up to 1.5s long (`hierarchical.window_len_s`), while `onset_strict` only counts a match within `onset_tolerance_s = 0.5s` of the true event start (`src/xrfv2_edge_tal/event/metrics.py:176`) — triggers routinely land well after onset and miss that tolerance even though they fall inside the correct event span, which is why `within_segment` F1 (40.52) is far higher for the same predictions
 - recall can be higher at the chosen FP budget
 - richer semantic events remain harder with wearable-only inputs
 

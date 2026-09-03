@@ -74,11 +74,30 @@ def _latency_stats(
     }
 
 
+def _input_dims_for_profile(
+    input_dims: dict[str, int], config: dict[str, Any], profile: str | None
+) -> dict[str, int]:
+    if profile is None:
+        return dict(input_dims)
+    profile_map = config.get("data", {}).get("profiles", {})
+    if profile not in profile_map:
+        available = ", ".join(sorted(str(k) for k in profile_map.keys()))
+        raise ValueError(f"Unknown profile '{profile}'. Available: {available}")
+    requested = {str(item) for item in profile_map[profile]}
+    filtered = {k: v for k, v in input_dims.items() if k in requested}
+    if not filtered:
+        raise ValueError(
+            f"Profile '{profile}' has no overlap with checkpoint modalities {list(input_dims)}"
+        )
+    return filtered
+
+
 def benchmark_main(
     checkpoint: str,
     config: dict[str, Any],
     seed: int = 42,
     output_dir: str = "runs",
+    profile: str | None = None,
 ) -> Path:
     state, metadata = load_checkpoint(checkpoint)
     model = _build_model_from_checkpoint(state=state, metadata=metadata, seed=seed)
@@ -88,13 +107,16 @@ def benchmark_main(
     warmup = int(bench_cfg.get("warmup", 5))
     iters = int(bench_cfg.get("iters", 25))
 
-    x = _make_fixed_input(metadata["input_dims"], seq_len=seq_len, seed=seed)
+    input_dims = _input_dims_for_profile(metadata["input_dims"], config=config, profile=profile)
+    x = _make_fixed_input(input_dims, seq_len=seq_len, seed=seed)
     latency = _latency_stats(model=model, x_dict=x, warmup=warmup, iters=iters)
 
     checkpoint_size_mb = Path(checkpoint).stat().st_size / (1024.0 * 1024.0)
     params = _count_params(state)
 
     payload = {
+        "profile": profile,
+        "modalities": sorted(input_dims.keys()),
         "params": params,
         "checkpoint_size_mb": float(checkpoint_size_mb),
         "estimated_fps_median": float(1000.0 / max(latency["median"], 1e-9)),
