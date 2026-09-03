@@ -15,6 +15,7 @@ from xrfv2_edge_tal.modalities import (
 def test_normalize_modality_aliases() -> None:
     assert normalize_modality_name("airpods") == "earbuds"
     assert normalize_modality_name("imu_glasses") == "glasses"
+    assert normalize_modality_name("imu_gl") == "glasses"
     assert normalize_modality_name("smartwatch") == "watch"
     assert normalize_modality_name("mobile") == "phone"
 

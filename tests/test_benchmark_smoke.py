@@ -3,8 +3,30 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from xrfv2_edge_tal.benchmark import benchmark_main
+from xrfv2_edge_tal.benchmark import _input_dims_for_profile, benchmark_main
 from xrfv2_edge_tal.train import train_main
+
+
+def test_input_dims_for_profile_resolves_aliased_raw_keys() -> None:
+    # Checkpoint trained via the dummy adapter uses its own raw modality names,
+    # while the shipped config's profile lists use the real-dataset raw names.
+    # Both must resolve to the same canonical modality for filtering to work.
+    input_dims = {"imu_earbuds": 6, "imu_glasses": 6}
+    config = {
+        "data": {
+            "profiles": {
+                "earbuds_glasses": ["airpods", "imu_gl"],
+                "glasses_only": ["imu_gl"],
+            }
+        }
+    }
+    assert _input_dims_for_profile(input_dims, config=config, profile="earbuds_glasses") == {
+        "imu_earbuds": 6,
+        "imu_glasses": 6,
+    }
+    assert _input_dims_for_profile(input_dims, config=config, profile="glasses_only") == {
+        "imu_glasses": 6,
+    }
 
 
 def test_benchmark_dummy_smoke(tmp_path: Path) -> None:

@@ -26,6 +26,7 @@ _ALIAS_MAP: dict[str, set[str]] = {
         "imu_glasses",
         "ar_glasses",
         "imu_smart_glasses",
+        "imu_gl",
     },
     "watch": {
         "watch",

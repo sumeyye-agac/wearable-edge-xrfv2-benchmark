@@ -3,8 +3,11 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+from xrfv2_edge_tal.config import load_yaml_config
 from xrfv2_edge_tal.event.eval_event import eval_event_main
 from xrfv2_edge_tal.event.train_event import train_event_main
+
+REPO_ROOT = Path(__file__).resolve().parents[1]
 
 
 def _event_config() -> dict:
@@ -182,6 +185,39 @@ def test_event_eval_uses_checkpoint_tcn_shape_over_config(tmp_path: Path) -> Non
     )
     metrics = json.loads((eval_run / "metrics.json").read_text(encoding="utf-8"))
     assert "profile_metrics" in metrics
+
+
+def test_shipped_mobility_config_dummy_quickstart_smoke(tmp_path: Path) -> None:
+    """Regression test for README Quickstart: the shipped config's `airpods`/`imu_gl`
+    profile modality names must resolve against the dummy adapter's raw keys
+    (`imu_earbuds`/`imu_glasses`) via modality alias canonicalization."""
+    cfg = load_yaml_config(str(REPO_ROOT / "configs" / "event_presence_mobility.yaml"))
+    cfg["train"]["max_train_samples"] = 4
+    cfg["eval"]["max_eval_samples"] = 4
+
+    train_run = train_event_main(
+        config=cfg,
+        data_root=str(tmp_path / "raw"),
+        adapter_name="dummy",
+        seed=5,
+        runs_dir=str(tmp_path / "runs"),
+        profile="earbuds_glasses",
+    )
+    ckpt = train_run / "checkpoints" / "last.npz"
+    assert ckpt.exists()
+
+    eval_run = eval_event_main(
+        checkpoint=str(ckpt),
+        config=cfg,
+        data_root=str(tmp_path / "raw"),
+        adapter_name="dummy",
+        seed=5,
+        output_dir=str(tmp_path / "runs"),
+        profiles=["earbuds_glasses", "glasses_only"],
+    )
+    metrics = json.loads((eval_run / "metrics.json").read_text(encoding="utf-8"))
+    assert "earbuds_glasses" in metrics["profile_metrics"]
+    assert "glasses_only" in metrics["profile_metrics"]
 
 
 def test_event_train_eval_hierarchical_smoke(tmp_path: Path) -> None:

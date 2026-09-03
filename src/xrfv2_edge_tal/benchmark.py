@@ -11,6 +11,7 @@ import numpy as np
 
 from xrfv2_edge_tal.artifacts import create_run_dir, write_metrics
 from xrfv2_edge_tal.checkpoint import load_checkpoint
+from xrfv2_edge_tal.modalities import resolve_modalities_to_raw_keys
 from xrfv2_edge_tal.models.factory import build_model
 
 
@@ -83,8 +84,11 @@ def _input_dims_for_profile(
     if profile not in profile_map:
         available = ", ".join(sorted(str(k) for k in profile_map.keys()))
         raise ValueError(f"Unknown profile '{profile}'. Available: {available}")
-    requested = {str(item) for item in profile_map[profile]}
-    filtered = {k: v for k, v in input_dims.items() if k in requested}
+    requested = [str(item) for item in profile_map[profile]]
+    raw_keys = resolve_modalities_to_raw_keys(
+        available_modalities=input_dims.keys(), requested_modalities=requested
+    )
+    filtered = {k: input_dims[k] for k in raw_keys if k in input_dims}
     if not filtered:
         raise ValueError(
             f"Profile '{profile}' has no overlap with checkpoint modalities {list(input_dims)}"
