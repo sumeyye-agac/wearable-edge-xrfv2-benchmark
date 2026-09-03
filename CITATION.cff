@@ -6,5 +6,6 @@ authors:
   - family-names: "Agac"
     given-names: "Sumeyye"
 repository-code: "https://github.com/sumeyye-agac/wearable-edge-xrfv2-benchmark"
+license: "MIT"
 version: "0.1.0"
 date-released: "2026-02-16"
